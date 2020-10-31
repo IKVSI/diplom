@@ -1,24 +1,5 @@
 #include "Function.h"
 
-#include <iostream>
-template <typename T>
-std::ostream& operator<< (std::ostream& out, const std::vector<T>& v)
-{
-    out << "[ ";
-    int i = 0;
-    if (v.size())
-    {
-        while (i < (v.size()-1))
-        {
-            out << v[i] << ", ";
-            ++i;
-        }
-        out << v[i];
-    }
-    out << " ]";
-    return out;
-}
-
 template <typename T, typename H>
 std::ostream& operator<< (std::ostream& out, const std::map<T, H>& m)
 {
