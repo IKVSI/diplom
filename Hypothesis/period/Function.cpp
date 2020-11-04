@@ -1,5 +1,7 @@
 #include "Function.h"
 
+#include <iostream>
+
 template <typename T, typename H>
 std::ostream& operator<< (std::ostream& out, const std::map<T, H>& m)
 {
@@ -12,25 +14,48 @@ std::ostream& operator<< (std::ostream& out, const std::map<T, H>& m)
     return out;
 }
 
+template <typename T>
+std::ostream& operator<< (std::ostream& out, const std::vector<T>& v)
+{
+    out << "[ ";
+    int i = 0;
+    if (v.size())
+    {
+        while (i < (v.size()-1))
+        {
+            out << v[i] << ", ";
+            ++i;
+        }
+        out << v[i];
+    }
+    out << " ]";
+    return out;
+}
+
 Function::Function(std::string stringform)
 {
     stringform.erase(std::remove_if(stringform.begin(), stringform.end(), isspace), stringform.end());
     this->generationfromstring(stringform);
-    this->generatePeriodTable();
+    this->isFullPeriod();
 }
 
-Function::Function(std::vector<std::vector<std::int16_t>> &generation)
+Function::Function(std::vector<std::vector<std::int16_t>> generation)
 {
-
+    std::int16_t mx = 0;
     for(auto i = generation.begin(); i != generation.end(); ++i)
     {
-        std::vector<std::int16_t> temp = std::vector<std::int16_t>();
-        std::copy((*i).begin(), (*i).end(), std::back_inserter(temp));
-        this->generation.push_back(temp);
+        std::vector<std::int16_t> temp;
+        for(auto j = (*i).begin(); j != (*i).end(); ++j)
+        {
+            temp.push_back(*j);
+            std::int16_t t = (*j < 0) ? -*j: *j;
+            if (mx < t) mx = t;
+        }
+        this->generation.emplace_back(temp);
     }
-    this->generatePeriodTable();
+    this->size = mx;
+    this->isFullPeriod();
 }
-
 
 void Function::generationfromstring(std::string &stringform)
 {
@@ -48,6 +73,7 @@ void Function::generationfromstring(std::string &stringform)
                 minus = -1;
                 ++i;
             case 'x':
+            case 'X':
                 std::uint32_t j = i + 1;
                 while ((j < stringform.size()) && (stringform[j] >= '0') && (stringform[j] <= '9')) ++j;
                 std::string sub = stringform.substr(i + 1, j - i - 1);
@@ -58,30 +84,6 @@ void Function::generationfromstring(std::string &stringform)
         }
     }
     this->generation.push_back(temp);
-}
-
-std::vector<std::vector<std::int16_t>> Function::getGeneration() {
-    return this->generation;
-}
-
-std::int16_t Function::getSize()
-{
-    return this->size;
-}
-
-void Function::generatePeriodTable()
-{
-    std::int16_t  size1 = size + 1;
-    for (int i = 0; i < size1; ++i) this->sequence.push_back(0);
-    std::vector<std::uint8_t> temp;
-    auto lastsize = this->table.size() - 1;
-    while (lastsize != this->table.size())
-    {
-        lastsize = this->table.size();
-        temp = std::vector<std::uint8_t>(this->sequence.begin() + (this->sequence.size() - size1), this->sequence.end());
-        std::uint8_t val = this->getValue(temp);
-        this->sequence.push_back(val);
-    }
 }
 
 std::uint8_t Function::getValue(std::vector<std::uint8_t> &temp)
@@ -101,23 +103,72 @@ std::uint8_t Function::getValue(std::vector<std::uint8_t> &temp)
     return this->table[temp];
 }
 
-std::uint32_t Function::getPeriod()
+bool Function::isFullPeriod()
 {
-    return this->table.size();
+    if (this->sequence.empty())
+    {
+        std::uint64_t mxperiod = 1;
+        for(std::int16_t i = -1; i < this->size; ++i)
+        {
+            mxperiod <<= 1;
+            this->sequence.push_back(0);
+        }
+        std::uint64_t period = 0;
+        std::int16_t povt = this->size - 1;
+        while ((period <= mxperiod)  && (povt != this->size))
+        {
+            std::vector<std::uint8_t> temp(this->sequence.begin() + period, this->sequence.end());
+            std::uint8_t val = this->getValue(temp);
+            this->sequence.push_back(val);
+            povt = (val) ? -1: povt + 1;
+            ++period;
+        }
+        this->is_full = (period == mxperiod);
+        this->period = (period > mxperiod) ? 0 : period;
+    }
+    return this->is_full;
+}
+
+std::vector<std::vector<std::int16_t>> Function::getGeneration() {
+    return this->generation;
+}
+
+std::int16_t Function::getSize()
+{
+    return this->size;
+}
+
+std::uint64_t Function::getPeriod()
+{
+    return this->period;
+}
+
+void Function::generatePeriodTable()
+{
+    this->isFullPeriod();
+    std::uint64_t period = 0, size1 = this->size + 1;
+    while ((period + size1) < this->sequence.size())
+    {
+        std::vector<std::uint8_t> temp(this->sequence.begin() + period, this->sequence.begin() + period + size1);
+        if (this->table.find(temp) == this->table.end()) this->table[temp] = this->sequence[period+size1+1];
+        else break;
+        ++period;
+    }
+    this->period = period;
 }
 
 std::ostream &operator<<(std::ostream &out, const Function &other)
 {
     std::int16_t  size1 = other.size + 1;
-    out << "Period: " << other.table.size() << " Seq: ";
+    out << "Period: " << other.period << " Seq: ";
     std::uint32_t i = 0;
-    while(i < other.table.size())
+    while(i < other.period)
     {
         out << (int) other.sequence[i];
         ++i;
     }
     std::uint32_t j = 0;
-    while(j < other.table.size())
+    while(j < other.period)
     {
         bool ok = true;
         for(std::uint32_t k = 0; k < size1; ++k)
@@ -132,7 +183,7 @@ std::ostream &operator<<(std::ostream &out, const Function &other)
         ++j;
     }
     out << '(';
-    while(j < other.table.size())
+    while(j < other.period)
     {
         out << (int) other.sequence[j];
         ++j;
@@ -143,6 +194,7 @@ std::ostream &operator<<(std::ostream &out, const Function &other)
 
 std::string Function::getTable()
 {
+    if (this->table.empty()) this->generatePeriodTable();
     std::stringstream func;
     func << "X0 + (";
     {
@@ -252,4 +304,49 @@ std::string Function::getTable()
     out << '\n';
     return out.str();
 }
+
+std::string Function::getFunction() {
+    std::stringstream func;
+    {
+        std::uint32_t i = 0;
+        while (i < this->generation.size() - 1) {
+            std::uint32_t j = 0;
+            while (j < this->generation[i].size() - 1) {
+                if (this->generation[i][j] < 0) {
+                    func << "-X" << -this->generation[i][j];
+                } else {
+                    func << "X" << this->generation[i][j];
+                }
+                func << "&";
+                ++j;
+            }
+            if (this->generation[i][j] < 0) {
+                func << "-X" << -this->generation[i][j];
+            } else {
+                func << "X" << this->generation[i][j];
+            }
+            func << " V ";
+            ++i;
+        }
+        std::uint32_t j = 0;
+        while (j < this->generation[i].size() - 1) {
+            if (this->generation[i][j] < 0) {
+                func << "-X" << -this->generation[i][j];
+            } else {
+                func << "X" << this->generation[i][j];
+            }
+            func << "&";
+            ++j;
+        }
+        if (this->generation[i][j] < 0) {
+            func << "-X" << -this->generation[i][j];
+        } else {
+            func << "X" << this->generation[i][j];
+        }
+    }
+    return func.str();
+}
+
+Function::~Function() {}
+
 
