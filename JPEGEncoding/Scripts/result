@@ -1,0 +1,4 @@
+algo: defaultgolomb.py number: 108216 length: 40 allength: 6694303
+algo: golombplus.py number: 108216 length: 40 allength: 6849341
+algo: golombzigzag.py number: 108216 length: 38 allength: 6705547
+algo: defaultgolomb.py number: 108216 length: 40 allength: 6694303
