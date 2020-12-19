@@ -81,6 +81,7 @@ class JPEG():
         self.start = False
         self.end = False
         self.cursor = 0
+        self.huffmantables = {}
         self.decode()
     
     def decode(self):
@@ -138,17 +139,26 @@ class JPEG():
             amount = struct.unpack("B" * 16, self.file.getBytes(self.cursor, 16))
             print("\tAmount: {}".format(amount))
             self.cursor += 16
-            symbols = []
-            s = symbols
+            table = [0 for i in range(65536)]
+            code = 0
+            step = 65536>>1
             i = 0
             p = 0
             while i < len(amount):
                 if amount[i] != p:
+                    table[code] = self.file.getBytes(self.cursor, 1)[0]
+                    cd = code
+                    code += step
+                    if table[cd]:
+                        for j in range(cd+1, code):
+                            table[j] = table[cd]
                     self.cursor += 1
                     p += 1
                 else:
                     i += 1
+                    step >>= 1
                     p = 0
+            self.huffmantables[inform] = table
 
 
 
