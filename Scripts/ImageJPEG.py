@@ -59,11 +59,26 @@ class ReadFile():
 
 
 class JPEG():
+    ZIGZAG = [
+        [ 0,  1,  5,  6, 14, 15, 27, 28],
+        [ 2,  4,  7, 13, 16, 26, 29, 42],
+        [ 3,  8, 12, 17, 25, 30, 41, 43],
+        [ 9, 11, 18, 24, 31, 40, 44, 53],
+        [10, 19, 23, 32, 39, 45, 52, 54],
+        [20, 22, 33, 38, 46, 51, 55, 60],
+        [21, 34, 37, 47, 50, 56, 59, 61],
+        [35, 36, 48, 49, 57, 58, 62, 63]
+    ]
+
     MARKERS = {
         b"\xFF\xD8": lambda x: x.markerSOI(),
         b"\xFF\xD9": lambda x: x.markerEOI(),
-        b"\xFF\xC4": lambda x: x.markerDHT()
+        b"\xFF\xC4": lambda x: x.markerDHT(),
+        b"\xFF\xDB": lambda x: x.markerDQT(),
+        b"\xFF\xDA": lambda x: x.markerSOS(),
+        b"\xFF\xC0": lambda x: x.markerSOF()
     }
+
     SKIPMARKERS = [
         b"\x00",
         b"\xD0",
@@ -75,6 +90,15 @@ class JPEG():
         b"\xD6",
         b"\xD7"
     ]
+
+    COMPONENTSID = {
+        1: "Y",
+        2: "Cb",
+        3: "Cr",
+        4: "I",
+        5: "Q"
+    }
+
     def __init__(self, filename):
         self.filename = filename
         self.file = ReadFile(self.filename)
@@ -82,8 +106,25 @@ class JPEG():
         self.end = False
         self.cursor = 0
         self.huffmantables = {}
+        self.qttable = {}
         self.decode()
-    
+
+    @staticmethod
+    def zigzag(table):
+        vector = [0 for i in range(64)]
+        for i in range(8):
+            for j in range(8):
+                vector[JPEG.ZIGZAG[i][j]] = table[i][j]
+        return vector
+
+    @staticmethod
+    def rezigzag(vector):
+        table = [[0 for j in range(8)] for i in range(8)]
+        for i in range(8):
+            for j in range(8):
+                table[i][j] = vector[JPEG.ZIGZAG[i][j]]
+        return table
+
     def decode(self):
         self.cursor = 0
         self.savecursor = self.cursor
@@ -127,7 +168,6 @@ class JPEG():
     def markerDHT(self):
         print("Marker \"Define Huffman Table\" found! on {}".format(hex(self.cursor)))
         self.cursor += 2
-        self.savecursor = self.cursor
         length = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
         endcursor = self.cursor + length
         self.cursor += 2
@@ -146,7 +186,7 @@ class JPEG():
             p = 0
             while i < len(amount):
                 if amount[i] != p:
-                    table[code] = self.file.getBytes(self.cursor, 1)[0]
+                    table[code] = (self.file.getBytes(self.cursor, 1)[0], i + 1)
                     cd = code
                     code += step
                     if table[cd]:
@@ -160,11 +200,84 @@ class JPEG():
                     p = 0
             self.huffmantables[inform] = table
 
+    def markerDQT(self):
+        print("Marker \"Define Quantization Table\" found! on {}".format(hex(self.cursor)))
+        self.cursor += 2
+        length = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
+        endcursor = self.cursor + length
+        self.cursor += 2
+        while self.cursor != endcursor:
+            inform = self.file.getBytes(self.cursor, 1)[0]
+            inform = ( inform & 0x0F, 2 if (0xF0 & inform) else 1)
+            tp = ">H" if inform[1] == 2 else "B"
+            print("\tNum: {} Precision: {} bytes".format(*inform))
+            self.cursor += 1
+            dqt = []
+            for i in range(64):
+                dqt.append(struct.unpack(tp, self.file.getBytes(self.cursor, inform[1]))[0])
+                self.cursor += inform[1]
+            self.qttable[inform[0]] = dqt
+            print("\tTable: ")
+            dqt = JPEG.rezigzag(dqt)
+            for i in dqt:
+                for j in i:
+                    print(j, '\t', end="")
+                print()
 
+    def markerSOF(self):
+        print("Marker \"Start of Frame\" found! on {}".format(hex(self.cursor)))
+        self.cursor += 2
+        length = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
+        self.cursor += 2
+        prec = self.file.getBytes(self.cursor, 1)[0]
+        self.cursor += 1
+        print("\tPrecision: {}".format(prec))
+        self.height = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
+        self.cursor += 2
+        self.width = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
+        self.cursor += 2
+        print("\tSize: {}h x {}w".format(self.height, self.width))
+        self.numofcomp = self.file.getBytes(self.cursor, 1)[0]
+        self.cursor += 1
+        print("\tNumber of Components: {}".format(self.numofcomp))
+        self.qtnumber = {}
+        for i in range(self.numofcomp):
+            compid = self.file.getBytes(self.cursor, 1)[0]
+            self.cursor += 1
+            sample = self.file.getBytes(self.cursor, 1)[0]
+            sample = ((sample & 0xF0) >> 4, (sample & 0x0F))
+            self.cursor += 1
+            tablenum = self.file.getBytes(self.cursor, 1)[0]
+            self.qtnumber[JPEG.COMPONENTSID[compid]] = tablenum
+            print("\tComponent: \"{}\"\n\tQTTable: {}\n\tSample: {}".format(JPEG.COMPONENTSID[compid], tablenum, sample))
+            self.cursor += 1
 
+    def markerSOS(self):
+        print("Marker \"Start of Scan\" found! on {}".format(hex(self.cursor)))
+        self.cursor += 2
+        self.savecursor = self.cursor
+        length = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
+        self.cursor += 2
+        compnum = struct.unpack("B", self.file.getBytes(self.cursor, 1))[0]
+        print("\tNumber of components: {}".format(compnum))
+        self.cursor += 1
+        self.components = []
+        for i in range(compnum):
+            compid = self.file.getBytes(self.cursor, 1)[0]
+            inform = self.file.getBytes(self.cursor + 1, 1)[0]
+            acdc = (JPEG.COMPONENTSID[compid], inform & 0x0F, (0xF0 & inform) >> 4)
+            print("\tComponent: \"{}\"\n\tAC Table: {}\n\tDC Table: {}".format(*acdc))
+            self.components.append(acdc)
+            self.cursor += 2
+        print(strbytes(self.file.getBytes(self.cursor, 3)))
+        self.cursor += 3
+        self.deHuffman()
+
+    def deHuffman(self):
+        DC = [0 for i in range(len(self.components))]
 
 def main():
-    JPEG("test2.jpg")
+    JPEG("test1.jpg")
 
 if __name__ == "__main__":
     main()
