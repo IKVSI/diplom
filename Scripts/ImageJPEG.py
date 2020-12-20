@@ -107,7 +107,7 @@ class JPEG():
         self.cursor = 0
         self.huffmantables = {}
         self.qttable = {}
-        self.decode()
+        self.decodeMarkers()
 
     @staticmethod
     def zigzag(table):
@@ -125,7 +125,7 @@ class JPEG():
                 table[i][j] = vector[JPEG.ZIGZAG[i][j]]
         return table
 
-    def decode(self):
+    def decodeMarkers(self):
         self.cursor = 0
         self.savecursor = self.cursor
         marker = self.file.getBytes(self.cursor, 2)
@@ -271,13 +271,116 @@ class JPEG():
             self.cursor += 2
         print(strbytes(self.file.getBytes(self.cursor, 3)))
         self.cursor += 3
-        self.deHuffman()
+        self.startofdata = self.cursor
 
-    def deHuffman(self):
-        DC = [0 for i in range(len(self.components))]
+#print("\tComponent: \"{}\"\n\tAC Table: {}\n\tDC Table: {}".format(*acdc))
+
+    def addBlock(self, num):
+        for i in range(num):
+            r = self.file.getBytes(self.cursor, 1)
+            if r == b"":
+                break
+            self.cursor += 2 if r == b"\xFF" else 1
+            self.block <<= 8
+            self.block += r[0]
+            self.bits += 8
+
+    def getCategoryNumber(self, num):
+        if num:
+            rt = self.block >> (self.bits - num)
+            self.shift(num)
+            num = 1 << (num - 1)
+            if rt < num:
+                rt = rt - (num << 1) + 1
+            return rt
+        else:
+            return 0
+
+    def strblock(self):
+        temp = bin(self.block)[2:]
+        temp = "0b" + (self.bits - len(temp)) * '0' + temp
+        return temp
+
+    def shift(self, num):
+        #temp = bin(self.block)[2:]
+        #temp = "0b" + (self.bits - len(temp)) * '0' + temp
+        #print("Before: {}".format(temp))
+        #print(-num)
+        lnum = num + (32 - self.bits)
+        self.block = ((self.block << lnum) & 0xFFFFFFFF) >> lnum
+        self.bits -= num
+        #temp = bin(self.block)[2:]
+        #temp = "0b" + (self.bits - len(temp)) * '0' + temp
+        if self.bits < 16:
+            self.addBlock(2)
+        #print("After: {}".format(temp))
+
+    def writetable(self, table):
+        with open(self.filename+".out", "a") as fout:
+            for i in table:
+                for j in i:
+                    print(j, end=" ", file=fout)
+                print(file=fout)
+            print(file=fout)
+
+    def decodeall(self):
+        print("\n\t\tStart Decode!\t\t\n")
+        DC = {i[0]: 0 for i in self.components}
+        self.cursor = self.startofdata
+        self.block = 0
+        self.bits = 0
+        self.addBlock(4)
+        height = self.height - self.height % 8
+        width = self.width - self.width % 8
+        print(height, width)
+        h, w = 0, 0
+        while((h != height) or (w != 0)):
+            vectors = {}
+            for i in self.components:
+                vector = []
+                component, acnum, dcnum = i
+                qtnum = self.qtnumber[component]
+                """
+                print("\tComponent: \"{}\"\n\tAC Table: {}\n\tDC Table: {}\n\tQT Table: {}".format(
+                    component,
+                    acnum,
+                    dcnum,
+                    qtnum
+                ))
+                """
+                temp = self.block >> (self.bits - 16)
+                category, l = self.huffmantables[(dcnum, "DC")][temp]
+                self.shift(l)
+                num = self.getCategoryNumber(category)
+                DC[component] += num
+                vector.append(DC[component])
+                while (len(vector) != 64):
+                    temp = self.block >> (self.bits - 16)
+                    category, l = self.huffmantables[(acnum, "AC")][temp]
+                    self.shift(l)
+                    if not category:
+                        while (len(vector) != 64):
+                            vector.append(0)
+                    else:
+                        nulls = (category & 0xF0) >> 4
+                        category &= 0x0F
+                        for i in range(nulls):
+                            vector.append(0)
+                        vector.append(self.getCategoryNumber(category))
+                vectors[component] = vector
+                self.writetable(JPEG.rezigzag(vector))
+            w += 8
+            if ((w == width) and (h != height)):
+                h += 8
+                w = 0
+            print(h, w)
+        print(hex(self.cursor))
+
+
 
 def main():
-    JPEG("test1.jpg")
+    a = JPEG("test2.jpg")
+    a.decodeall()
 
 if __name__ == "__main__":
     main()
