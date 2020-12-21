@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import os
 import struct
+import argparse
 
 def strbytes(b):
     r = ""
@@ -57,7 +58,6 @@ class ReadFile():
             r += self.buffers[2][:end]
         return r
 
-
 class JPEG():
     ZIGZAG = [
         [ 0,  1,  5,  6, 14, 15, 27, 28],
@@ -100,7 +100,9 @@ class JPEG():
     }
 
     def __init__(self, filename):
+        self.outtable = ""
         self.filename = filename
+        self.savemarkerDHTlegnth = 0
         self.file = ReadFile(self.filename)
         self.start = False
         self.end = False
@@ -108,7 +110,7 @@ class JPEG():
         self.huffmantables = {}
         self.qttable = {}
         self.decodeMarkers()
-
+    # Создание вектора из таблицы
     @staticmethod
     def zigzag(table):
         vector = [0 for i in range(64)]
@@ -116,7 +118,7 @@ class JPEG():
             for j in range(8):
                 vector[JPEG.ZIGZAG[i][j]] = table[i][j]
         return vector
-
+    # Восстановление таблицы из вектора
     @staticmethod
     def rezigzag(vector):
         table = [[0 for j in range(8)] for i in range(8)]
@@ -124,9 +126,10 @@ class JPEG():
             for j in range(8):
                 table[i][j] = vector[JPEG.ZIGZAG[i][j]]
         return table
-
+    # Обработка маркеров JPEG
     def decodeMarkers(self):
         self.cursor = 0
+        print("File: {}".format(self.filename))
         self.savecursor = self.cursor
         marker = self.file.getBytes(self.cursor, 2)
         if marker in JPEG.MARKERS:
@@ -150,6 +153,7 @@ class JPEG():
     def markerEOI(self):
         print("Marker \"End of Image\" found! on {}".format(hex(self.cursor)))
         self.end = True
+        self.savelengthofdata = self.cursor - self.startofdata
         self.cursor += 2
 
     def ignoreMarker(self):
@@ -169,6 +173,7 @@ class JPEG():
         print("Marker \"Define Huffman Table\" found! on {}".format(hex(self.cursor)))
         self.cursor += 2
         length = struct.unpack(">H", self.file.getBytes(self.cursor, 2))[0]
+        self.savemarkerDHTlegnth += length
         endcursor = self.cursor + length
         self.cursor += 2
         while self.cursor != endcursor:
@@ -269,12 +274,10 @@ class JPEG():
             print("\tComponent: \"{}\"\n\tAC Table: {}\n\tDC Table: {}".format(*acdc))
             self.components.append(acdc)
             self.cursor += 2
-        print(strbytes(self.file.getBytes(self.cursor, 3)))
         self.cursor += 3
         self.startofdata = self.cursor
 
-#print("\tComponent: \"{}\"\n\tAC Table: {}\n\tDC Table: {}".format(*acdc))
-
+    # Докидывает в блок новые данные из файла
     def addBlock(self, num):
         for i in range(num):
             r = self.file.getBytes(self.cursor, 1)
@@ -285,6 +288,7 @@ class JPEG():
             self.block += r[0]
             self.bits += 8
 
+    # Вытаскивает число из кодируемого блока по категории num
     def getCategoryNumber(self, num):
         if num:
             rt = self.block >> (self.bits - num)
@@ -296,34 +300,22 @@ class JPEG():
         else:
             return 0
 
+    # Превращает блок кодируемых данных в строку (для отладки)
     def strblock(self):
         temp = bin(self.block)[2:]
         temp = "0b" + (self.bits - len(temp)) * '0' + temp
         return temp
 
+    # Сдвигает блок кодируемых данных на num
     def shift(self, num):
-        #temp = bin(self.block)[2:]
-        #temp = "0b" + (self.bits - len(temp)) * '0' + temp
-        #print("Before: {}".format(temp))
-        #print(-num)
         lnum = num + (32 - self.bits)
         self.block = ((self.block << lnum) & 0xFFFFFFFF) >> lnum
         self.bits -= num
-        #temp = bin(self.block)[2:]
-        #temp = "0b" + (self.bits - len(temp)) * '0' + temp
         if self.bits < 16:
             self.addBlock(2)
-        #print("After: {}".format(temp))
 
-    def writetable(self, table):
-        with open(self.filename+".out", "a") as fout:
-            for i in table:
-                for j in i:
-                    print(j, end=" ", file=fout)
-                print(file=fout)
-            print(file=fout)
-
-    def decodeall(self):
+    # Декодирует таблицы из JPEG
+    def decodeTables(self):
         print("\n\t\tStart Decode!\t\t\n")
         DC = {i[0]: 0 for i in self.components}
         self.cursor = self.startofdata
@@ -368,19 +360,51 @@ class JPEG():
                             vector.append(0)
                         vector.append(self.getCategoryNumber(category))
                 vectors[component] = vector
-                self.writetable(JPEG.rezigzag(vector))
+            yield (h, w, vectors)
+            print("Read {}h x {}w block!".format(h, w))
             w += 8
             if ((w == width) and (h != height)):
                 h += 8
                 w = 0
-            print(h, w)
-        print(hex(self.cursor))
 
+    # Сохраняет таблицы в файл
+    def extractTable(self):
+        rt = "Huffman Tables Size: {} Data Size: {} Sum Size: {}\n\n".format(
+            self.savemarkerDHTlegnth,
+            self.savelengthofdata,
+            self.savemarkerDHTlegnth + self.savelengthofdata
+        )
+        for h, w, vectors in self.decodeTables():
+            for j in vectors:
+                table = JPEG.rezigzag(vectors[j])
+                rt += '\n'.join((' '.join(map(str, i)) for i in table)) + "\n\n"
+        with open(self.filename+".tables", "w") as fout:
+            fout.write(rt)
+
+def is_valid_file(parser, arg):
+    if not os.path.exists(arg):
+        parser.error("The file {} does not exist!".format(arg))
+    else:
+        return arg
 
 
 def main():
-    a = JPEG("test2.jpg")
-    a.decodeall()
+    parser = argparse.ArgumentParser(description="JPEG parsing Module")
+    parser.add_argument(
+        "filename",
+        help = "JPEG file",
+        type = lambda x: is_valid_file(parser, x)
+        )
+    parser.add_argument(
+        "--tables",
+        help = "Export tables in [filename].tables",
+        action = 'store_true'
+    )
+    args = parser.parse_args()
+    jpegfile = JPEG(args.filename)
+    if args.tables:
+        jpegfile.extractTable()
+
 
 if __name__ == "__main__":
     main()
