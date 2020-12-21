@@ -374,10 +374,13 @@ class JPEG():
             self.savelengthofdata,
             self.savemarkerDHTlegnth + self.savelengthofdata
         )
+        t = 0
         for h, w, vectors in self.decodeTables():
             for j in vectors:
+                t += 1
                 table = JPEG.rezigzag(vectors[j])
                 rt += '\n'.join((' '.join(map(str, i)) for i in table)) + "\n\n"
+        rt = "Num of Tables: {} {}".format(t, rt)
         with open(self.filename+".tables", "w") as fout:
             fout.write(rt)
 
