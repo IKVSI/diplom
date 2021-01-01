@@ -4,7 +4,8 @@
 
 int main()
 {
-    std::cout << "Hello World!\n";
+    ReadFile A("../../Scripts/test1.jpg");
+    std::cout << A.getStrBuffer();
     return 0;
 }
 
