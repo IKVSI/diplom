@@ -1,11 +1,11 @@
 ﻿#include <iostream>
-#include "JPEG/ReadFile.h"
+#include "JPEG/JPEG.h"
 
 
-int main()
+int main(int argcount, string args)
 {
-    ReadFile A("../../Scripts/test1.jpg");
-    std::cout << A.getStrBuffer();
+    JPEG A("../../../Scripts/test2.jpg");
+    A.saveClearJpeg();
     return 0;
 }
 

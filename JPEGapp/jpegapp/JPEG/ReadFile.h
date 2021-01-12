@@ -1,10 +1,14 @@
-#pragma once
+#ifndef JPEGAPP_READFILE_H
+#define JPEGAPP_READFILE_H
 #include <string>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <climits>
+#include <cstring>
 #include <map>
+
 using namespace std;
 class ReadFile
 {
@@ -12,14 +16,19 @@ private:
 	string filename;
 	ifstream fin;
 	unsigned long long filesize;
-	const unsigned long long buffersize = 20;
+	const unsigned long long buffersize = 16;
 	char * buffer;
+	map<unsigned long long, char *> buffers;
 	unsigned long long curentBlock = 1;
 	unsigned long long maxblock = 0;
-	void readBlcok(unsigned long long block);
+	void readBlock(unsigned long long block);
 public:
 	ReadFile(string filename);
 	~ReadFile();
-	string getStrBuffer();
-	char * readBytes(unsigned long long start, unsigned long long length);
+	static string strBytes(char * bts, unsigned long long size);
+	unsigned char * readBytes(unsigned long long start, unsigned long long &length, bool reversed=false);
+	unsigned long long int getFileSize();
+	string getFileName();
 };
+
+#endif //JPEGAPP_READFILE_H
