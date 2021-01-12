@@ -1,4 +1,3 @@
-
-JPEGapp/jpegapp/.vs/*
-JPEGapp/jpegapp/.idea/*
-JPEGapp/jpegapp/cmake-build-debug/*
+JPEGapp/*/.vs/*
+JPEGapp/*/.idea/*
+JPEGapp/*/cmake-build-debug/*

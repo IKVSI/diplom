@@ -14,7 +14,6 @@ JPEG::JPEG(string filename)
     std::fill(JPEG::MARKERS+0xd0, JPEG::MARKERS+0xd8, &JPEG::ignoreMarker);
     JPEG::MARKERS[0xd8] = &JPEG::SOIMarker;
     JPEG::MARKERS[0xd9] = &JPEG::EOIMarker;
-    this->findMarkers();
 }
 
 JPEG::~JPEG()
@@ -137,6 +136,7 @@ bool check(unsigned char a)
 
 void JPEG::saveClearJpeg()
 {
+    this->findMarkers();
     string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename.substr(0, foutfilename.size() - 4) + ".clear.jpg";
     ofstream fout(foutfilename, ios::binary|ios::out);
