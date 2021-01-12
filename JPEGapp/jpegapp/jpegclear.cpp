@@ -11,10 +11,13 @@ int main (int argc,  char ** args)
         cerr << "Use: jpegclear.exe [jpeg file]\n";
         raise(3);
     }
-    JPEG photo(args[1]);
-    photo.saveClearJpeg();
-    ReadFile A(args[1]);
-    unsigned long long int size = 0x45;
-    unsigned char * temp = A.readBytes(0x14, size);
-    delete [] temp;
+    else
+    {
+        JPEG photo(args[1]);
+        photo.saveClearJpeg();
+        ReadFile A(args[1]);
+        unsigned long long int size = 0x45;
+        unsigned char* temp = A.readBytes(0x14, size);
+        delete[] temp;
+    }
 }
