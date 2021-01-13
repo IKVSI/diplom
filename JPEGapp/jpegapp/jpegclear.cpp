@@ -15,9 +15,5 @@ int main (int argc,  char ** args)
     {
         JPEG photo(args[1]);
         photo.saveClearJpeg();
-        ReadFile A(args[1]);
-        unsigned long long int size = 0x45;
-        unsigned char* temp = A.readBytes(0x14, size);
-        delete[] temp;
     }
 }

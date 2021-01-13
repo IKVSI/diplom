@@ -14,41 +14,20 @@ JPEG::JPEG(string filename)
     std::fill(JPEG::MARKERS+0xd0, JPEG::MARKERS+0xd8, &JPEG::ignoreMarker);
     JPEG::MARKERS[0xd8] = &JPEG::SOIMarker;
     JPEG::MARKERS[0xd9] = &JPEG::EOIMarker;
+    JPEG::MARKERS[0xc4] = &JPEG::DHTMarker;
 }
 
 JPEG::~JPEG()
 {
     delete this->fin;
-}
-
-void JPEG::defaultMarker()
-{
-    this->readlength = 1;
-    unsigned char * marker = this->fin->readBytes(this->cursor, this->readlength);
-    cout << "Found Marker " << ReadFile::strBytes((char*)marker, this->readlength);
-    cout << " at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
-    this->markerstype.push_back(marker[0]);
-    this->markersaddr.push_back(this->cursor - 1);
-    delete [] marker;
-    ++this->cursor;
-    this->readlength = 2;
-    twobyte length;
-    length.bts = this->fin->readBytes(this->cursor, this->readlength, true);
-    if (this->readlength)
+    for(auto key = this->DC.begin(); key != this->DC.end(); ++key)
     {
-        unsigned long long int lastcursor = this->cursor;
-        this->cursor += *length.num;
-        if ((this->cursor < this->fin->getFileSize()) && (this->isMarker()))
-        {
-            cout << "\tLength: " << dec <<*length.num << " bytes: " << ReadFile::strBytes((char *) length.bts, 2) << '\n';
-        }
-        else
-        {
-            this->cursor = lastcursor;
-        }
+        delete key->second;
     }
-    delete [] length.bts;
-    cout << '\n';
+    for(auto key = this->AC.begin(); key != this->AC.end(); ++key)
+    {
+        delete key->second;
+    }
 }
 
 void JPEG::findMarkers()
@@ -82,6 +61,22 @@ void JPEG::ignoreMarker()
     ++this->cursor;
 }
 
+unsigned long long int JPEG::markerLength()
+{
+    twobyte length;
+    this->readlength = 2;
+    length.bts = this->fin->readBytes(this->cursor, this->readlength, true);
+    unsigned long long int temp = *length.num;
+    delete [] length.bts;
+    return temp;
+}
+
+void JPEG::pushMarker(unsigned char marker, unsigned long long int addr)
+{
+    this->markerstype.push_back(marker);
+    this->markersaddr.push_back(addr);
+}
+
 bool JPEG::isMarker()
 {
     this->readlength = 1;
@@ -89,6 +84,25 @@ bool JPEG::isMarker()
     bool ok = (ff[0] == 0xFF);
     delete [] ff;
     return ok;
+}
+
+void JPEG::defaultMarker()
+{
+    this->readlength = 1;
+    unsigned char * marker = this->fin->readBytes(this->cursor, this->readlength);
+    cout << "Found Marker " << ReadFile::strBytes((char*)marker, this->readlength);
+    cout << " at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
+    this->pushMarker(marker[0], this->cursor - 1);
+    delete [] marker;
+    ++this->cursor;
+
+    unsigned long long int length = this->markerLength();
+    this->cursor += length;
+    if ((this->cursor < this->fin->getFileSize()) && (this->isMarker()))
+    {
+        cout << "\tLength: " << dec << length << '\n';
+    }
+    else this->cursor -= length;
 }
 
 void JPEG::runMarker()
@@ -156,5 +170,52 @@ void JPEG::saveClearJpeg()
     char end[] = {'\xFF', '\xD9'};
     fout.write(end, 2);
     cout << "FILE SAVED TO \"" << foutfilename <<"\"\n";
+}
+
+void JPEG::DHTMarker()
+{
+    cout << "Find Define Huffman Table marker [ c4 ] at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
+    ++this->cursor;
+    unsigned long long int length = this->markerLength();
+    unsigned long long int endcursor = this->cursor += length;
+    this->cursor += 2;
+    while (this->cursor != endcursor)
+    {
+        this->readlength = 1;
+        unsigned char * tp = this->fin->readBytes(this->cursor, this->readlength);
+        unsigned short number = tp[0] & 0x0F;
+        bool ac = (tp[0] & 0xF0);
+        delete [] tp;
+
+        unsigned char counts[hufsize];
+        unsigned short sum = 0;
+        for(unsigned short i = 0; i < hufsize; ++i)
+        {
+            unsigned char * num = this->fin->readBytes(this->cursor, this->readlength);
+            counts[i] = num[0];
+            sum += counts[i];
+            delete [] num;
+        }
+
+        unsigned char * symbols = new unsigned char[sum];
+        for(unsigned short i = 0; i < sum; ++i)
+        {
+            unsigned char *sym = this->fin->readBytes(this->cursor, this->readlength);
+            symbols[i] = sym[0];
+            delete[] sym;
+        }
+        Huffman * H = new Huffman(hufsize);
+        H->createFromJPEG(counts, symbols, sum);
+        //cout << H->showTable();
+        if (ac)
+        {
+            this->AC.emplace(number, H);
+        }
+        else
+        {
+            this->DC.emplace(number, H);
+        }
+        delete [] symbols;
+    }
 }
 

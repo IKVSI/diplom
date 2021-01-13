@@ -5,9 +5,9 @@ set(CMAKE_CXX_STANDARD 14)
 
 include_directories(JPEG)
 
-add_executable(jpegclear
+add_executable(jpegtables
         JPEG/ReadFile.cpp
         JPEG/ReadFile.h
         JPEG/JPEG.cpp
         JPEG/JPEG.h
-        jpegclear.cpp)
+        jpegtables.cpp jpegtables.cpp JPEG/Huffman.cpp JPEG/Huffman.h)
