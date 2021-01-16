@@ -16,29 +16,29 @@ Huffman::~Huffman()
     if (this->table != nullptr) delete [] this->table;
 }
 
-void Huffman::createFromJPEG(unsigned char *counts, unsigned char *symbols, unsigned short size)
+void Huffman::createFromJPEG(unsigned char *counts, unsigned char *symbols)
 {
     unsigned long next = 0;
     unsigned long last = 0;
-    for(unsigned short i = 0, j = 0; i < this->bitlength;)
+    for(unsigned short i = 0, j = 0,s = 0; i < this->bitlength;)
     {
         if (j != counts[i])
         {
-            cout << next << "\n";
             unsigned long nxt = next << (bitlength - 1 - i);
-            this->table[nxt] = symbols[j];
-            this->codelength.emplace(symbols[j], i+1);
-            last = nxt;
+            this->table[nxt] = symbols[s];
+            this->codelength.emplace(symbols[s], i+1);
             for(unsigned long k = last + 1; k < nxt; ++k)
             {
                 this->table[k] = this->table[last];
             }
+            last = nxt;
             ++next;
             ++j;
+            ++s;
         }
         else
         {
-            next << 1;
+            next <<= 1;
             j = 0;
             ++i;
         }
@@ -65,7 +65,7 @@ string Huffman::showTable()
     stringstream temp;
     for(unsigned long i = 0; i < this->size; ++i)
     {
-        temp << bin(i) << ": " << hex << (unsigned short) this->table[i] << " length: " << this->codelength[this->table[i]] << "\n";
+        temp << bin(i) << ": " << hex << (unsigned short) this->table[i] << " length: " << dec <<(unsigned short) this->codelength[this->table[i]] << "\n";
     }
     return temp.str();
 }

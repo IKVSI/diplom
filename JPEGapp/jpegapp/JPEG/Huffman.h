@@ -17,9 +17,9 @@ private:
     unsigned char * table;
 public:
     Huffman(unsigned short bitlength);
-    map<char, char> codelength;
+    map<char, unsigned char> codelength;
     string showTable();
-    void createFromJPEG(unsigned char * counts, unsigned char * symbols, unsigned short size);
+    void createFromJPEG(unsigned char * counts, unsigned char * symbols);
     ~Huffman();
 };
 

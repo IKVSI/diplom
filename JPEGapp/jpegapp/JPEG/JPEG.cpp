@@ -177,7 +177,7 @@ void JPEG::DHTMarker()
     cout << "Find Define Huffman Table marker [ c4 ] at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
     ++this->cursor;
     unsigned long long int length = this->markerLength();
-    unsigned long long int endcursor = this->cursor += length;
+    unsigned long long int endcursor = this->cursor + length;
     this->cursor += 2;
     while (this->cursor != endcursor)
     {
@@ -186,10 +186,11 @@ void JPEG::DHTMarker()
         unsigned short number = tp[0] & 0x0F;
         bool ac = (tp[0] & 0xF0);
         delete [] tp;
+        ++this->cursor;
 
-        unsigned char counts[hufsize];
+        unsigned char * counts = new unsigned char[this->hufsize];
         unsigned short sum = 0;
-        for(unsigned short i = 0; i < hufsize; ++i)
+        for(unsigned short i = 0; i < this->hufsize; ++i,++this->cursor)
         {
             unsigned char * num = this->fin->readBytes(this->cursor, this->readlength);
             counts[i] = num[0];
@@ -198,15 +199,14 @@ void JPEG::DHTMarker()
         }
 
         unsigned char * symbols = new unsigned char[sum];
-        for(unsigned short i = 0; i < sum; ++i)
+        for(unsigned short i = 0; i < sum; ++i,++this->cursor)
         {
             unsigned char *sym = this->fin->readBytes(this->cursor, this->readlength);
             symbols[i] = sym[0];
             delete[] sym;
         }
         Huffman * H = new Huffman(hufsize);
-        H->createFromJPEG(counts, symbols, sum);
-        //cout << H->showTable();
+        H->createFromJPEG(counts, symbols);
         if (ac)
         {
             this->AC.emplace(number, H);
@@ -216,6 +216,7 @@ void JPEG::DHTMarker()
             this->DC.emplace(number, H);
         }
         delete [] symbols;
+        delete [] counts;
     }
 }
 
