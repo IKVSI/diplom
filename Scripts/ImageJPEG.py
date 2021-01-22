@@ -292,7 +292,9 @@ class JPEG():
     def getCategoryNumber(self, num):
         if num:
             rt = self.block >> (self.bits - num)
+            print(bin(self.block))
             self.shift(num)
+            print(bin(self.block))
             num = 1 << (num - 1)
             if rt < num:
                 rt = rt - (num << 1) + 1
@@ -317,6 +319,10 @@ class JPEG():
     # Декодирует таблицы из JPEG
     def decodeTables(self):
         print("\n\t\tStart Decode!\t\t\n")
+        for i in range(len(self.huffmantables[(0, "DC")])):
+            table = self.huffmantables[(0, "DC")]
+            print(bin(i), ":", table[i])
+        return
         DC = {i[0]: 0 for i in self.components}
         self.cursor = self.startofdata
         self.block = 0
@@ -329,6 +335,7 @@ class JPEG():
         while((h != height) or (w != 0)):
             vectors = {}
             for i in self.components:
+                print(bin(self.block))
                 vector = []
                 component, acnum, dcnum = i
                 qtnum = self.qtnumber[component]
@@ -343,13 +350,16 @@ class JPEG():
                 temp = self.block >> (self.bits - 16)
                 category, l = self.huffmantables[(dcnum, "DC")][temp]
                 self.shift(l)
+                print(bin(self.block), l)
                 num = self.getCategoryNumber(category)
                 DC[component] += num
                 vector.append(DC[component])
                 while (len(vector) != 64):
                     temp = self.block >> (self.bits - 16)
                     category, l = self.huffmantables[(acnum, "AC")][temp]
+                    print(bin(self.block), l)
                     self.shift(l)
+                    print(bin(self.block))
                     if not category:
                         while (len(vector) != 64):
                             vector.append(0)
@@ -359,6 +369,7 @@ class JPEG():
                         for i in range(nulls):
                             vector.append(0)
                         vector.append(self.getCategoryNumber(category))
+                sys.exit()
                 vectors[component] = vector
             yield (h, w, vectors)
             print("Read {}h x {}w block!".format(h, w))

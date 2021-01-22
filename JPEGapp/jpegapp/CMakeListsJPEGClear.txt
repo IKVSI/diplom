@@ -10,4 +10,6 @@ add_executable(jpegclear
         JPEG/ReadFile.h
         JPEG/JPEG.cpp
         JPEG/JPEG.h
-        jpegclear.cpp)
+        JPEG/Huffman.cpp
+        JPEG/Huffman.h
+        jpegclear.cpp )

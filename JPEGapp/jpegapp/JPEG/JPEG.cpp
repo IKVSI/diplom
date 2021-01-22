@@ -1,151 +1,253 @@
 #include "JPEG.h"
 
-union twobyte
-{
-    unsigned short int * num;
-    unsigned char * bts;
-};
-
 JPEG::JPEG(string filename)
 {
     this->fin = new ReadFile(filename);
-    JPEG::MARKERS[0] = &JPEG::ignoreMarker;
-    std::fill(JPEG::MARKERS+1, JPEG::MARKERS+256, &JPEG::defaultMarker);
-    std::fill(JPEG::MARKERS+0xd0, JPEG::MARKERS+0xd8, &JPEG::ignoreMarker);
-    JPEG::MARKERS[0xd8] = &JPEG::SOIMarker;
-    JPEG::MARKERS[0xd9] = &JPEG::EOIMarker;
-    JPEG::MARKERS[0xc4] = &JPEG::DHTMarker;
+    fill(JPEG::MARKERS, JPEG::MARKERS+256, &JPEG::defaultMarker);
+    JPEG::MARKERS[0xd8] = &JPEG::markerSOI;
+    JPEG::MARKERS[0xd9] = &JPEG::markerEOI;
+    JPEG::MARKERS[0xdd] = &JPEG::markerDRI;
+    JPEG::MARKERS[0xc0] = &JPEG::markerSOF;
+    JPEG::MARKERS[0xc4] = &JPEG::markerDHT;
+    JPEG::MARKERS[0xda] = &JPEG::markerSOS;
+}
+
+unsigned long long JPEG::readNumFromFile(unsigned char length)
+{
+    unsigned long long l = length;
+    unsigned char * bts = this->fin->readBytes(this->cursor, l);
+    if (l != length)
+    {
+        if (l) delete [] bts;
+        cerr << "Broken file: Failed read " << (unsigned short) length << "b" << '\n' << flush;
+        raise(4);
+    }
+    l = 0;
+    for(unsigned char i = 0; i < length; ++i)
+    {
+        l <<= 8;
+        l |= bts[i];
+    }
+    delete [] bts;
+    this->cursor += length;
+    return l;
 }
 
 JPEG::~JPEG()
 {
     delete this->fin;
-    for(auto key = this->DC.begin(); key != this->DC.end(); ++key)
-    {
-        delete key->second;
-    }
-    for(auto key = this->AC.begin(); key != this->AC.end(); ++key)
-    {
-        delete key->second;
-    }
+    for(auto key = this->components.begin(); key != this->components.end(); ++key) delete *key;
+    for(auto key = this->AC.begin(); key != this->AC.end(); ++key) delete key->second;
+    for(auto key = this->DC.begin(); key != this->DC.end(); ++key) delete key->second;
 }
 
 void JPEG::findMarkers()
 {
-    cout << "\t\tLook for markers! :)\n\n";
     this->cursor = 0;
-    if (this->isMarker())
+    while (this->cursor < this->fin->getFileSize())
     {
-        ++this->cursor;
-        this->runMarker();
-    }
-    if (this->startimage) while(this->cursor < this->fin->getFileSize())
-    {
-        if (this->isMarker())
+        unsigned char marker = this->readNumFromFile(1);
+        if (marker == 0xFF)
         {
-            ++this->cursor;
-            this->runMarker();
+            marker = this->readNumFromFile(1);
+            if (!binary_search(this->neMARKER, this->neMARKER + 9, marker))
+            {
+                this->markerstype.push_back(marker);
+                this->markersaddr.push_back(this->cursor - 2);
+                jpegfunc func = JPEG::MARKERS[marker];
+                (this->*func)();
+            }
         }
-        else ++this->cursor;
-        if (this->endimage) break;
+    }
+}
+
+string strmarker(unsigned short marker, unsigned long long cursor)
+{
+    stringstream temp;
+    temp << "\"0x" << hex << setw(2) << setfill('0') << marker;
+    temp << "\" at 0x" << setw(8) << cursor;
+    return temp.str();
+}
+
+unsigned short JPEG::findLength()
+{
+    unsigned short length = this->readNumFromFile(2) - 2;
+    unsigned long long cursor = this->cursor;
+    this->cursor += length;
+    unsigned char marker = this->readNumFromFile(1);
+    if (marker == 0xFF)
+    {
+        cout << "\tLength: " << length<<'\n';
+        this->cursor = cursor;
     }
     else
     {
-        cerr << "Marker Start of Image not found!\n";
-        raise(1);
+        length = 0;
+        this->cursor = cursor - 2;
     }
-}
-
-void JPEG::ignoreMarker()
-{
-    ++this->cursor;
-}
-
-unsigned long long int JPEG::markerLength()
-{
-    twobyte length;
-    this->readlength = 2;
-    length.bts = this->fin->readBytes(this->cursor, this->readlength, true);
-    unsigned long long int temp = *length.num;
-    delete [] length.bts;
-    return temp;
-}
-
-void JPEG::pushMarker(unsigned char marker, unsigned long long int addr)
-{
-    this->markerstype.push_back(marker);
-    this->markersaddr.push_back(addr);
-}
-
-bool JPEG::isMarker()
-{
-    this->readlength = 1;
-    unsigned char * ff = this->fin->readBytes(this->cursor, this->readlength);
-    bool ok = (ff[0] == 0xFF);
-    delete [] ff;
-    return ok;
+    return length;
 }
 
 void JPEG::defaultMarker()
 {
-    this->readlength = 1;
-    unsigned char * marker = this->fin->readBytes(this->cursor, this->readlength);
-    cout << "Found Marker " << ReadFile::strBytes((char*)marker, this->readlength);
-    cout << " at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
-    this->pushMarker(marker[0], this->cursor - 1);
-    delete [] marker;
-    ++this->cursor;
-
-    unsigned long long int length = this->markerLength();
+    --this->cursor;
+    unsigned char marker = this->readNumFromFile(1);
+    cout << "Find marker " << strmarker(marker, this->cursor - 2) << " !\n";
+    unsigned short length = this->findLength();
     this->cursor += length;
-    if ((this->cursor < this->fin->getFileSize()) && (this->isMarker()))
+}
+
+void JPEG::markerSOI()
+{
+    cout << "Find marker \"Start of Image\" " << strmarker(0xd8, this->cursor - 2) << " !\n";
+}
+
+void JPEG::markerEOI()
+{
+    cout << "Find marker \"End of Image\" " << strmarker(0xd9, this->cursor - 2) << " !\n";
+}
+
+void JPEG::markerDRI()
+{
+    cout << "Find marker \"Define Restart Interval\" " << strmarker(0xdd, this->cursor - 2) << " !\n";
+    unsigned short length = this->findLength();
+    this->restartinterval = this->readNumFromFile(2);
+    cout << "\tRestart Interval: " << restartinterval<<'\n';
+}
+
+void JPEG::markerSOF()
+{
+    cout << "Find marker \"Start of Frame\" " << strmarker(0xc0, this->cursor - 2) << " !\n";
+    unsigned short length = this->findLength();
+    this->sampleprecision = this->readNumFromFile(1);
+    cout << "\tSample Precision: "<< (unsigned short) this->sampleprecision << '\n';
+    this->height = this->readNumFromFile(2);
+    this->width = this->readNumFromFile(2);
+    cout << "\tHeight: " << this->height << "\n\tWidth :" << this->width << '\n';
+    unsigned char components = this->readNumFromFile(1);
+    for(unsigned char i = 0; i < components; ++i)
     {
-        cout << "\tLength: " << dec << length << '\n';
+        Component * c = new Component;
+        c->id = this->readNumFromFile(1);
+        c->sampheigth = this->readNumFromFile(1);
+        c->sampwidth = c->sampheigth >> 4;
+        c->sampheigth &= 0x0F;
+        c->qtnum = this->readNumFromFile(1);
+        cout << "Component " << JPEG::compnames[c->id] << ":\n";
+        cout << "\t\tID: " << (unsigned short) c->id << '\n';
+        cout << "\t\tSample ver.: " << (unsigned short) c->sampheigth << '\n';
+        cout << "\t\tSample hor.: " << (unsigned short) c->sampwidth << '\n';
+        cout << "\t\tNum of qtable: " << (unsigned short) c->qtnum <<'\n';
+        this->components.push_back(c);
     }
-    else this->cursor -= length;
 }
 
-void JPEG::runMarker()
+string huffmanarr(unsigned char * counts, unsigned char hlength, unsigned char * symbols)
 {
-    unsigned char * marker = this->fin->readBytes(this->cursor, this->readlength);
-    if (this->readlength)
+    stringstream  temp;
+    --hlength;
+    unsigned short k = 0;
+    temp << "[ ";
+    for(unsigned short i = 0; i < hlength; ++i)
     {
-        jpegfunc func = JPEG::MARKERS[marker[0]];
-        (this->*func)();
-        delete[] marker;
+        temp << i + 1 << ": ( ";
+        if (counts[i])
+        {
+            unsigned char cnt = counts[i] - 1;
+            for(unsigned short j = 0; j < cnt; ++j)
+            {
+                temp << (unsigned short) symbols[k] << ", ";
+                ++k;
+            }
+            temp << (unsigned short) symbols[k];
+            ++k;
+        }
+        temp << " ), ";
     }
-    else
+    temp << hlength + 1 << ": ( ";
+    if (counts[hlength])
     {
-        cerr << "Broken File !\n";
-        raise(2);
+        unsigned char cnt = counts[hlength] - 1;
+        for(unsigned short j = 0; j < cnt; ++j)
+        {
+            temp << (unsigned short) symbols[k] << ", ";
+            ++k;
+        }
+        temp << (unsigned short) symbols[k];
+        ++k;
+    }
+    temp << " ) ";
+    temp << "]";
+    return temp.str();
+}
+
+void JPEG::markerDHT()
+{
+    cout << "Find marker \"Define Huffman Table\" " << strmarker(0xc4, this->cursor - 2) << " !\n";
+    unsigned short length = this->findLength();
+    unsigned long long endcursor = this->cursor + length;
+    unsigned const char hlength = 16;
+    while (this->cursor != endcursor)
+    {
+        unsigned char num = this->readNumFromFile(1);
+        unsigned char *counts = new unsigned char[hlength];
+        unsigned short sum = 0;
+        for (unsigned char i = 0; i < hlength; ++i) {
+            counts[i] = this->readNumFromFile(1);
+            sum += counts[i];
+        }
+        unsigned char *symbols = new unsigned char[sum];
+        for (unsigned short i = 0; i < sum; ++i) {
+            symbols[i] = this->readNumFromFile(1);
+        }
+        Huffman *h = new Huffman(hlength);
+        h->createFromJPEG(counts, symbols);
+        if (num >> 4) {
+            num &= 0x0F;
+            cout << "\tType: AC\n\tNumber: " << (unsigned short)num << '\n';
+            this->AC.emplace(num, h);
+        } else {
+            num &= 0x0F;
+            cout << "\tType: DC\n\tNumber: " << (unsigned short)num << '\n';
+            this->DC.emplace(num, h);
+        }
+        cout << "Array: " << huffmanarr(counts, hlength, symbols) << '\n';
+        delete[] symbols;
+        delete[] counts;
     }
 }
 
-void JPEG::SOIMarker()
+void JPEG::markerSOS()
 {
-    cout << "Found Start of Image Marker [ d8 ] at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
-    this->markerstype.push_back(0xd8);
-    this->markersaddr.push_back(this->cursor - 1);
-    ++this->cursor;
-    this->startimage = true;
-    cout << '\n';
-}
-
-void JPEG::EOIMarker()
-{
-    cout << "Found End of Image Marker [ d9 ] at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n" <<flush;
-    this->markerstype.push_back(0xD9);
-    this->markersaddr.push_back(this->cursor - 1);
-    ++this->cursor;
-    this->endimage = true;
-    cout << '\n';
-}
-
-bool check(unsigned char a)
-{
-    const unsigned char cmsize = 6;
-    const unsigned char clearmarkers[cmsize] = {0xC0, 0xC4, 0xD8, 0xDA,  0xDB, 0xDD};
-    return binary_search(clearmarkers, clearmarkers+cmsize, a);
+    cout << "Find marker \"Start of Scan\" " << strmarker(0xda, this->cursor - 2) << " !\n";
+    unsigned short length = this->readNumFromFile(2);
+    cout << "\tLength: " << length << '\n';
+    unsigned char comps = this->readNumFromFile(1);
+    for(unsigned char i = 0; i < comps; ++i)
+    {
+        unsigned char id = this->readNumFromFile(1);
+        unsigned char ACnum = this->readNumFromFile(1);
+        unsigned char DCnum = ACnum >> 4;
+        ACnum &= 0x0F;
+        unsigned char j = 0;
+        for(; j < this->components.size(); ++j) if (this->components[j]->id == id) break;
+        if (i != j)
+        {
+            Component * c = this->components[i];
+            this->components[i] = this->components[j];
+            this->components[j] = c;
+        }
+        this->components[i]->ACnum = ACnum;
+        this->components[i]->DCnum = DCnum;
+        cout << "\tComponent " << JPEG::compnames[this->components[i]->id] <<":\n";
+        cout << "\t\tNumber of AC: " <<(unsigned short) this->components[i]->ACnum << '\n';
+        cout << "\t\tNumber of DC: " <<(unsigned short) this->components[i]->DCnum << '\n';
+    }
+    this->cursor += 3;
+    this->datacursor = this->cursor;
+    stringstream temp;
+    temp << "0x" << hex << setfill('0') << setw(8) << this->datacursor;
+    cout << "\tData addr: " << temp.str() << '\n';
 }
 
 void JPEG::saveClearJpeg()
@@ -154,17 +256,18 @@ void JPEG::saveClearJpeg()
     string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename.substr(0, foutfilename.size() - 4) + ".clear.jpg";
     ofstream fout(foutfilename, ios::binary|ios::out);
-    this->cursor = 0;
-    bool ok = true;
-    for(unsigned int i = 0, size = this->markerstype.size() - 1; i < size; ++i)
+    for(unsigned long long  i = 0; i < this->markersaddr.size() - 1; ++i)
     {
-        if (check(this->markerstype[i]))
+        if (binary_search(JPEG::clearMarkers, JPEG::clearMarkers + 7, this->markerstype[i]))
         {
-            unsigned long long int start = this->markersaddr[i];
-            unsigned long long int length = this->markersaddr[i + 1] - start;
-            unsigned char * bts = this->fin->readBytes(start, length);
-            fout.write((char *)bts, length);
-            delete [] bts;
+            stringstream  temp;
+            temp << "0x" << hex << setfill('0') << setw(2) << (unsigned short)this->markerstype[i];
+            cout << "Write Marker \"" << temp.str() << "\" !\n";
+            unsigned long long addrstart = this->markersaddr[i];
+            unsigned long long length = this->markersaddr[i + 1] - addrstart;
+            unsigned char * c = this->fin->readBytes(addrstart, length);
+            fout.write((char *) c, length);
+            delete [] c;
         }
     }
     char end[] = {'\xFF', '\xD9'};
@@ -172,51 +275,190 @@ void JPEG::saveClearJpeg()
     cout << "FILE SAVED TO \"" << foutfilename <<"\"\n";
 }
 
-void JPEG::DHTMarker()
+string strbitbuffer(unsigned long long buffer, unsigned short bitlength)
 {
-    cout << "Find Define Huffman Table marker [ c4 ] at 0x" << setw(8) << setfill('0') << hex << this->cursor << " !\n";
-    ++this->cursor;
-    unsigned long long int length = this->markerLength();
-    unsigned long long int endcursor = this->cursor + length;
-    this->cursor += 2;
-    while (this->cursor != endcursor)
+    stringstream temp;
+    if (bitlength)
     {
-        this->readlength = 1;
-        unsigned char * tp = this->fin->readBytes(this->cursor, this->readlength);
-        unsigned short number = tp[0] & 0x0F;
-        bool ac = (tp[0] & 0xF0);
-        delete [] tp;
-        ++this->cursor;
-
-        unsigned char * counts = new unsigned char[this->hufsize];
-        unsigned short sum = 0;
-        for(unsigned short i = 0; i < this->hufsize; ++i,++this->cursor)
-        {
-            unsigned char * num = this->fin->readBytes(this->cursor, this->readlength);
-            counts[i] = num[0];
-            sum += counts[i];
-            delete [] num;
+        for (unsigned long long bit = (1 << (bitlength - 1)); bit != 0; bit >>= 1) {
+            temp << bool(buffer & bit);
         }
-
-        unsigned char * symbols = new unsigned char[sum];
-        for(unsigned short i = 0; i < sum; ++i,++this->cursor)
-        {
-            unsigned char *sym = this->fin->readBytes(this->cursor, this->readlength);
-            symbols[i] = sym[0];
-            delete[] sym;
-        }
-        Huffman * H = new Huffman(hufsize);
-        H->createFromJPEG(counts, symbols);
-        if (ac)
-        {
-            this->AC.emplace(number, H);
-        }
-        else
-        {
-            this->DC.emplace(number, H);
-        }
-        delete [] symbols;
-        delete [] counts;
     }
+    return temp.str();
+}
+
+
+
+signed long **JPEG::getNextTable()
+{
+    Component * comp = this->components[this->ccid];
+    signed long ** table = new signed long * [this->sampleprecision];
+    for(unsigned char i = 0; i < this->sampleprecision; ++i)
+    {
+        table[i] = new signed long[this->sampleprecision];
+        fill(table[i], table[i] + this->sampleprecision, 0);
+    }
+    signed long * mass = new signed long [this->sampleprecision * this->sampleprecision];
+    fill(mass, mass + this->sampleprecision * this->sampleprecision, 0);
+
+    Huffman * code = this->DC[comp->DCnum];
+    unsigned char sym, category, nulls;
+    signed long long num = 0;
+
+    //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+    while(!code->decode(this->buffer, this->bitlength, category))
+    {
+        this->extendBuffer();
+        //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+    }
+    //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+    while(!Huffman::decodeCategory(category, this->buffer, this->bitlength, num))
+    {
+        this->extendBuffer();
+        //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+    }
+    //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+    comp->DC += num;
+    mass[0] = comp->DC;
+
+    for(unsigned char i = 1; i < this->sampleprecision*this->sampleprecision; ++i)
+    {
+        code = this->AC[comp->ACnum];
+        while(!code->decode(this->buffer, this->bitlength, sym))
+        {
+            this->extendBuffer();
+            //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+        }
+        //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+        if (!sym) break;
+        nulls = sym >> 4;
+        while(nulls != 0)
+        {
+            ++i;
+            --nulls;
+        }
+        category = sym & 0x0F;
+        while(!Huffman::decodeCategory(category, this->buffer, this->bitlength, num))
+        {
+            this->extendBuffer();
+            //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+        }
+        //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
+        mass[i] = num;
+    }
+
+    for(unsigned char i = 0; i < this->sampleprecision; ++i)
+    {
+        for(unsigned char j = 0; j < this->sampleprecision; ++j)
+        {
+            table[i][j] = mass[JPEG::ZIGZAG[i][j]];
+        }
+    }
+    delete [] mass;
+
+    ++this->ws;
+    if (comp->sampwidth == this->ws)
+    {
+        this->ws = 0;
+        ++this->hs;
+        if (comp->sampheigth == this->hs)
+        {
+            this->hs = 0;
+            ++this->ccid;
+            if (this->ccid == this->components.size())
+            {
+                this->ccid = 0;
+                ++this->mcunum;
+                if (!(this->mcunum % this->restartinterval))
+                {
+                    unsigned long num = this->readNumFromFile(2);
+                    //cerr << hex << num << '\n' << flush;
+                    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+                    {
+                        (*key)->DC = 0;
+                    }
+                    this->buffer = 0;
+                    this->bitlength = 0;
+                }
+            }
+        }
+    }
+    return table;
+}
+
+
+void JPEG::decodeTables()
+{
+    this->findMarkers();
+    this->cursor = datacursor;
+    this->mcunum = 0;
+    this->ccid = 0;
+    this->hs = 0;
+    this->ws = 0;
+    this->buffer = 0;
+    this->bitlength = 0;
+    this->genMCUNumber();
+    cout << "Number of MCU: " << this->numberofmcu << '\n';
+
+    map<unsigned char, ofstream *> foutfiles;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        string foutfilename = this->fin->getFileName() + "."+ JPEG::compnames[(*key)->id] + ".tables";
+        ofstream * fout = new ofstream (foutfilename, ios::out);
+        foutfiles.emplace((*key)->id, fout);
+
+    }
+
+    while (mcunum != numberofmcu)
+    {
+        cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bSave " << mcunum << " MCU!" << flush;
+        ofstream *fout = foutfiles[this->components[this->ccid]->id];
+        signed long **table = this->getNextTable();
+        for(unsigned char i = 0; i < this->sampleprecision; ++i)
+        {
+            unsigned char sp1 = this->sampleprecision - 1;
+            for(unsigned char j = 0; j < sp1; ++j)
+            {
+                (*fout) << table[i][j] << ", ";
+            }
+            (*fout) << table[i][sp1] << "\n";
+        }
+        *fout << "\n";
+    }
+    cout << "\n";
+    for(auto key = foutfiles.begin(); key != foutfiles.end(); ++key)
+    {
+        string foutfilename = this->fin->getFileName() + "."+ JPEG::compnames[(*key).first] + ".tables";
+        cout << "File \"" << foutfilename << "\" saved!\n";
+        key->second->close();
+        delete key->second;
+    }
+}
+
+void JPEG::extendBuffer()
+{
+    if ((64 - this->bitlength) > this->sampleprecision)
+    {
+        unsigned char c = this->readNumFromFile(1);
+        if (c == 0xFF) this->readNumFromFile(1);
+        this->buffer = (this->buffer << this->sampleprecision) | c;
+        this->bitlength += this->sampleprecision;
+    }
+}
+
+void JPEG::genMCUNumber()
+{
+    unsigned char hsample = 0;
+    unsigned char wsample = 0;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        if ((*key)->sampwidth > wsample) wsample = (*key)->sampwidth;
+        if ((*key)->sampheigth > hsample) hsample = (*key)->sampheigth;
+    }
+    hsample *= this->sampleprecision;
+    wsample *= this->sampleprecision;
+    unsigned long long mcuw = (this->width / wsample) + ((this->width % wsample) ? 1: 0);
+    unsigned long long mcuh = (this->height / hsample) + ((this->height % hsample) ? 1: 0);
+    this->numberofmcu = mcuh * mcuw;
 }
 

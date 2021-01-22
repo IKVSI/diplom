@@ -14,6 +14,6 @@ int main (int argc,  char ** args)
     else
     {
         JPEG photo(args[1]);
-        photo.findMarkers();
+        photo.decodeTables();
     }
 }

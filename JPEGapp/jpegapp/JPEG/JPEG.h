@@ -9,51 +9,89 @@
 #include <vector>
 using namespace std;
 
+struct Component
+{
+    unsigned char id;
+    unsigned char sampheigth;
+    unsigned char sampwidth;
+    unsigned char qtnum;
+    unsigned char ACnum;
+    unsigned char DCnum;
+    signed long DC = 0;
+};
 
 class JPEG
 {
+    const string compnames[6] = {"", "Y", "Cb", "Cr", "I", "Q"};
+    const unsigned char neMARKER[9] = {0x0, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7};
+    const unsigned char clearMarkers[7] = {0xC0, 0xC4, 0xD8, 0xD9, 0xDA,  0xDB, 0xDD};
+    const unsigned char ZIGZAG[8][8] = {
+        0,  1,  5,  6, 14, 15, 27, 28,
+        2,  4,  7, 13, 16, 26, 29, 42,
+        3,  8, 12, 17, 25, 30, 41, 43,
+        9, 11, 18, 24, 31, 40, 44, 53,
+        10, 19, 23, 32, 39, 45, 52, 54,
+        20, 22, 33, 38, 46, 51, 55, 60,
+        21, 34, 37, 47, 50, 56, 59, 61,
+        35, 36, 48, 49, 57, 58, 62, 63
+    };
     // шаблон функций маркеров
     typedef void (JPEG::*jpegfunc)();
     // массив функций обработчиков маркеров по их адресам
     jpegfunc MARKERS[256];
 private:
+    // файл
+    ReadFile * fin;
+    // Чтение байтов из файла
+    unsigned long long readNumFromFile(unsigned char length);
+    unsigned long long cursor;
+    // Точность сэмпла
+    unsigned char sampleprecision;
+    // Высота x Ширина изображения
+    unsigned short height;
+    unsigned short width;
+    // Компоненты Изображения
+    vector<Component *> components;
     // массивы для типов/адресов маркеров встречающихся в файле
     vector<unsigned char> markerstype;
     vector<unsigned long long int> markersaddr;
-    // проверка крайних маркеров SOI/EOI
-    bool startimage = false;
-    bool endimage = false;
-    // адрес и длина чтения из файла
-    unsigned long long int cursor = 0;
-    unsigned long long int readlength = 1;
-    // коды Хаффмана
-    map<unsigned short, Huffman *> DC;
-    map<unsigned short, Huffman *> AC;
-    unsigned short hufsize = 16;
-    // обработчики маркеров
+    // Интервал обнуления
+    unsigned long long restartinterval = 0xFFFFFFFFFFFFFFFF;
+    // Коды Хаффмана
+    map <unsigned char, Huffman *> AC;
+    map <unsigned char, Huffman *> DC;
+    // Поиск маркеров
+    void findMarkers();
+    // Проверка длины маркера
+    unsigned short findLength();
+    // Обработчики маркеров
     void defaultMarker();
-    void ignoreMarker();
-    void SOIMarker();
-    void EOIMarker();
-    void DHTMarker();
-    // проверка на 0xFF есть ли маркер
-    bool isMarker();
-    // запуск обработчика маркера
-    void runMarker();
-    // чтение длины маркера
-    unsigned long long int markerLength();
-    // запись маркера в массив
-    void pushMarker(unsigned char marker, unsigned long long int addr);
-    // файл
-    ReadFile * fin;
+    void markerSOI();
+    void markerEOI();
+    void markerDRI();
+    void markerSOF();
+    void markerDHT();
+    void markerSOS();
+    // Курсок на начало данных
+    unsigned long long datacursor;
+    // Достаёт следующую матрицу
+    signed long ** getNextTable();
+    // Количество прочтённых MCU
+    unsigned long long mcunum;
+    // ID кодируемого компонента
+    unsigned char ccid;
+    unsigned char hs;
+    unsigned char ws;
+    unsigned long long buffer;
+    unsigned short bitlength;
+    unsigned long long numberofmcu;
+    void extendBuffer();
+    void genMCUNumber();
 public:
     JPEG(string filename);
     ~JPEG();
-    // поиск маркеров в файле
-    void findMarkers();
-    // обрезка информационных и прочих маркеров не влияющих на изображение
-    // и сохранение в новый файл name.jpg -> name.clear.jpg
     void saveClearJpeg();
+    void decodeTables();
 };
 
 

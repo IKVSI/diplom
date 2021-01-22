@@ -16,43 +16,87 @@ Huffman::~Huffman()
     if (this->table != nullptr) delete [] this->table;
 }
 
+template <typename T, typename  V>
+string strmap(map<T, V> mp)
+{
+    stringstream temp;
+    temp << "{ ";
+    for(auto i = mp.begin(); i != mp.end(); ++i)
+    {
+        temp << "0x"<<hex << (unsigned short) i->first << ": " << dec<< (unsigned short) i->second << ", ";
+    }
+    temp << '\b' << '\b' << '}';
+    return temp.str();
+}
+
 void Huffman::createFromJPEG(unsigned char *counts, unsigned char *symbols)
 {
+    /*
     unsigned long next = 0;
     unsigned long last = 0;
-    for(unsigned short i = 0, j = 0,s = 0; i < this->bitlength;)
+    unsigned short i = 0, j = 0;
+    cout << dec << "[ ";
+    while(i < this->bitlength - 1)
     {
-        if (j != counts[i])
+        cout << i+1 << " : " <<(unsigned short) counts[i] << "/(";
+        if (counts[i])
         {
-            unsigned long nxt = next << (bitlength - 1 - i);
-            this->table[nxt] = symbols[s];
-            this->codelength.emplace(symbols[s], i+1);
-            for(unsigned long k = last + 1; k < nxt; ++k)
+            unsigned short k = 0;
+            while (k < counts[i] - 1)
             {
-                this->table[k] = this->table[last];
+                cout << (unsigned short)symbols[j] << ", ";
+                ++j;
+                ++k;
             }
-            last = nxt;
-            ++next;
+            cout << (unsigned short)symbols[j];
             ++j;
-            ++s;
+        }
+        cout << "), ";
+        ++i;
+    }
+    cout << i+1 << " : " << (unsigned short)counts[i] << "(";
+    if (counts[i])
+    {
+        unsigned short k = 0;
+        while (k < counts[i] - 1)
+        {
+            cout << (unsigned short)symbols[j] << ", ";
+            ++j;
+            ++k;
+        }
+        cout << (unsigned short)symbols[j];
+        ++j;
+    }
+    cout <<  ")";
+    cout << "]\n";
+     */
+    unsigned long long counter = 0;
+    for(unsigned char i = 0, j = 0, k = 0; i < this->bitlength;)
+    {
+        //cout << counter<<" "<<hex<<(unsigned short) symbols[j]<< " "<<dec<<(unsigned short) k<<"/" <<(unsigned short) counts[i] <<" " <<(unsigned short) i<<   '\n';
+        if (k != counts[i])
+        {
+            unsigned long long ts = counter << (this->bitlength - i - 1);
+            ++counter;
+            unsigned long long te = counter << (this->bitlength - i - 1);
+            for(unsigned long long ti = ts; ti < te; ++ti) this->table[ti] = symbols[j];
+            this->codelength.emplace(symbols[j], i + 1);
+            ++j;
+            ++k;
         }
         else
         {
-            next <<= 1;
-            j = 0;
+            counter <<= 1;
             ++i;
+            k = 0;
         }
-    }
-    for(unsigned long k = last + 1; k < this->size; ++k)
-    {
-        this->table[k] = this->table[last];
     }
 }
 
-string bin(unsigned long a)
+string bin(unsigned long a, unsigned char bits)
 {
     stringstream temp;
-    for(unsigned long i = 0x80000000; i != 0; i >>= 1)
+    for(unsigned long i = (1 << (bits - 1)); i != 0; i >>= 1)
     {
         short p = (a&i) ? 1 : 0;
         temp << p;
@@ -65,7 +109,46 @@ string Huffman::showTable()
     stringstream temp;
     for(unsigned long i = 0; i < this->size; ++i)
     {
-        temp << bin(i) << ": " << hex << (unsigned short) this->table[i] << " length: " << dec <<(unsigned short) this->codelength[this->table[i]] << "\n";
+        temp << bin(i, this->bitlength) << ": " << hex << (unsigned short) this->table[i] << " length: " << dec <<(unsigned short) this->codelength[this->table[i]] << "\n";
     }
     return temp.str();
+}
+
+bool Huffman::decode(unsigned long long &a, unsigned short &bitlength, unsigned char &decodesym)
+{
+    unsigned long long b = a;
+    if (bitlength > this->bitlength) b >>= (bitlength - this->bitlength);
+    else b <<= (this->bitlength - bitlength);
+    decodesym = this->table[b];
+    unsigned char length = this->codelength[decodesym];
+    unsigned short btl = bitlength - length;
+    if (btl < 64)
+    {
+        bitlength = btl;
+        b = 1;
+        b <<= bitlength;
+        b -= 1;
+        a &= b;
+        return true;
+    }
+    return false;
+}
+
+bool Huffman::decodeCategory(unsigned char category, unsigned long long int &buffer, unsigned short &bitlength, signed long long &decodenum)
+{
+    if (category > bitlength) return false;
+    bitlength -= category;
+    unsigned long long temp = buffer >> bitlength;
+    buffer &= ((1 << bitlength) - 1);
+    if (category) {
+        decodenum = (1 << (category - 1));
+        if (temp >= decodenum) decodenum = temp;
+        else
+        {
+            decodenum <<= 1;
+            decodenum = -decodenum + 1 + temp;
+        }
+    }
+    else decodenum = 0;
+    return true;
 }

@@ -54,7 +54,7 @@ string ReadFile::strBytes(char *bts, unsigned long long size)
     return temp.str();
 }
 
-unsigned char * ReadFile::readBytes(unsigned long long int start, unsigned long long int &length, bool reversed)
+unsigned char * ReadFile::readBytes(unsigned long long int start, unsigned long long int &length)
 {
     if (start > this->filesize)
     {
@@ -80,13 +80,6 @@ unsigned char * ReadFile::readBytes(unsigned long long int start, unsigned long 
         memcpy(cursor, &this->buffer[st], cpsize);
         start += cpsize;
         cursor += cpsize;
-    }
-    if (reversed)
-    {
-        char * stbr = new char[length];
-        for(unsigned long long i = 0, j = length - 1; i < length; ++i, --j) stbr[i] = rbts[j];
-        delete [] rbts;
-        rbts = stbr;
     }
     return (unsigned char *) rbts;
 }

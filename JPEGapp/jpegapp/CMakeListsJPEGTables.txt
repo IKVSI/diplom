@@ -10,4 +10,6 @@ add_executable(jpegtables
         JPEG/ReadFile.h
         JPEG/JPEG.cpp
         JPEG/JPEG.h
-        jpegtables.cpp jpegtables.cpp)
+        JPEG/Huffman.cpp
+        JPEG/Huffman.h
+        jpegtables.cpp)
