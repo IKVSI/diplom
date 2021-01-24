@@ -10,6 +10,7 @@ JPEG::JPEG(string filename)
     JPEG::MARKERS[0xc0] = &JPEG::markerSOF;
     JPEG::MARKERS[0xc4] = &JPEG::markerDHT;
     JPEG::MARKERS[0xda] = &JPEG::markerSOS;
+    JPEG::MARKERS[0xdb] = &JPEG::markerDQT;
 }
 
 unsigned long long JPEG::readNumFromFile(unsigned char length)
@@ -39,6 +40,11 @@ JPEG::~JPEG()
     for(auto key = this->components.begin(); key != this->components.end(); ++key) delete *key;
     for(auto key = this->AC.begin(); key != this->AC.end(); ++key) delete key->second;
     for(auto key = this->DC.begin(); key != this->DC.end(); ++key) delete key->second;
+    for(auto key = this->QT.begin(); key != this->QT.end(); ++key)
+    {
+        for(unsigned char i = 0; i < this->sampleprecision; ++i) delete [] key->second[i];
+        delete [] key->second;
+    }
 }
 
 void JPEG::findMarkers()
@@ -460,5 +466,34 @@ void JPEG::genMCUNumber()
     unsigned long long mcuw = (this->width / wsample) + ((this->width % wsample) ? 1: 0);
     unsigned long long mcuh = (this->height / hsample) + ((this->height % hsample) ? 1: 0);
     this->numberofmcu = mcuh * mcuw;
+}
+
+void JPEG::markerDQT()
+{
+    cout << "Find marker \"Define Quantization Table\" " << strmarker(0xdb, this->cursor - 2) << " !\n";
+    unsigned short length = this->findLength();
+    unsigned long long endcursor = this->cursor + length;
+    while (this->cursor != endcursor)
+    {
+        unsigned char qtinform = this->readNumFromFile(1);
+        unsigned char qtprec = (qtinform >> 1) ? 16: 8;
+        qtinform &= 0x0F;
+        unsigned char ** table = new unsigned char * [qtprec];
+        for(unsigned char i = 0; i < qtprec; ++i) table[i] = new unsigned char [qtprec];
+        cout << "\tNumber: " << (unsigned short) qtinform << '\n';
+        cout << "\tPrecision: " << (unsigned short) qtprec << '\n';
+        cout << "\tTable:\n";
+        for(unsigned char i = 0; i< qtprec; ++i)
+        {
+            cout << "\t\t";
+            for(unsigned char j = 0; j < qtprec; ++j)
+            {
+                table[i][j] = this->readNumFromFile(1);
+                cout << (unsigned short) table[i][j] << '\t';
+            }
+            cout << '\n';
+        }
+        this->QT.emplace(qtinform, table);
+    }
 }
 

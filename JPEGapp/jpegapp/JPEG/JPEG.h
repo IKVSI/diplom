@@ -60,6 +60,8 @@ private:
     // Коды Хаффмана
     map <unsigned char, Huffman *> AC;
     map <unsigned char, Huffman *> DC;
+    // Таблицы Квантизации
+    map <unsigned char, unsigned char **> QT;
     // Поиск маркеров
     void findMarkers();
     // Проверка длины маркера
@@ -72,6 +74,7 @@ private:
     void markerSOF();
     void markerDHT();
     void markerSOS();
+    void markerDQT();
     // Курсок на начало данных
     unsigned long long datacursor;
     // Достаёт следующую матрицу
