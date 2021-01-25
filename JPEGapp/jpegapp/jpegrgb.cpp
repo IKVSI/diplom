@@ -4,7 +4,7 @@ int main (int argc,  char ** args)
 {
     if (argc < 2)
     {
-        cerr << "Use: jpegclear.exe [jpeg file]\n";
+        cerr << "Use: jpegrgb.exe [jpeg file]\n";
         raise(3);
     }
     else

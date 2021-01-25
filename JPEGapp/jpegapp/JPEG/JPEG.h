@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <csignal>
 #include <vector>
+#include <cmath>
 using namespace std;
 
 struct Component
@@ -62,6 +63,7 @@ private:
     map <unsigned char, Huffman *> DC;
     // Таблицы Квантизации
     map <unsigned char, unsigned char **> QT;
+    map <unsigned char, unsigned char> qtprec;
     // Поиск маркеров
     void findMarkers();
     // Проверка длины маркера
@@ -83,18 +85,31 @@ private:
     unsigned long long mcunum;
     // ID кодируемого компонента
     unsigned char ccid;
+    // Переменные для кодирования
     unsigned char hs;
     unsigned char ws;
     unsigned long long buffer;
     unsigned short bitlength;
     unsigned long long numberofmcu;
+    unsigned long long mcuw;
+    unsigned long long mcuh;
+    unsigned char hsample;
+    unsigned char wsample;
+    // Функции для кодирования
     void extendBuffer();
     void genMCUNumber();
+    // Переменные для перевода YCbCr to RGB
+    vector <double **> mcuY;
+    vector <double **> mcuCb;
+    vector <double **> mcuCr;
+    // Стартовая установка декодирования
+    void decodeStart();
 public:
     JPEG(string filename);
     ~JPEG();
     void saveClearJpeg();
     void decodeTables();
+    void decodeYCbCrtoRGB();
 };
 
 

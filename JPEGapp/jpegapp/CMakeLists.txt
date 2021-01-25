@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.17)
 project(jpegapp)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 include_directories(JPEG)
 
-add_executable(jpegtables
+add_executable(jpegrgb
         JPEG/ReadFile.cpp
         JPEG/ReadFile.h
         JPEG/JPEG.cpp
         JPEG/JPEG.h
         JPEG/Huffman.cpp
         JPEG/Huffman.h
-        jpegtables.cpp)
+        jpegrgb.cpp)

@@ -1,3 +1,4 @@
 JPEGapp/*/.vs/*
 JPEGapp/*/.idea/*
 JPEGapp/*/cmake-build-debug/*
+JPEGapp/*/cmake-build-release/*

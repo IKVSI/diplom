@@ -42,7 +42,7 @@ JPEG::~JPEG()
     for(auto key = this->DC.begin(); key != this->DC.end(); ++key) delete key->second;
     for(auto key = this->QT.begin(); key != this->QT.end(); ++key)
     {
-        for(unsigned char i = 0; i < this->sampleprecision; ++i) delete [] key->second[i];
+        for(unsigned char i = 0; i < this->qtprec[key->first]; ++i) delete [] key->second[i];
         delete [] key->second;
     }
 }
@@ -223,6 +223,41 @@ void JPEG::markerDHT()
     }
 }
 
+void JPEG::markerDQT()
+{
+    cout << "Find marker \"Define Quantization Table\" " << strmarker(0xdb, this->cursor - 2) << " !\n";
+    unsigned short length = this->findLength();
+    unsigned long long endcursor = this->cursor + length;
+    while (this->cursor != endcursor)
+    {
+        unsigned char qtinform = this->readNumFromFile(1);
+        unsigned char qtprec = (qtinform >> 1) ? 16: 8;
+        qtinform &= 0x0F;
+        this->qtprec.emplace(qtinform, qtprec);
+        unsigned short tempsize = qtprec;
+        tempsize *= tempsize;
+        unsigned char * temp = new unsigned char [qtprec * qtprec];
+        cout << "\tNumber: " << (unsigned short) qtinform << '\n';
+        cout << "\tPrecision: " << (unsigned short) qtprec << '\n';
+        for(unsigned short i = 0; i < tempsize; ++i) temp[i] = this->readNumFromFile(1);
+        unsigned char ** table = new unsigned char * [qtprec];
+        for(unsigned char i = 0; i < qtprec; ++i) table[i] = new unsigned char [qtprec];
+        cout << "\tTable:\n";
+        for(unsigned char i = 0; i< qtprec; ++i)
+        {
+            cout << "\t\t";
+            for(unsigned char j = 0; j < qtprec; ++j)
+            {
+                table[i][j] = temp[JPEG::ZIGZAG[i][j]];
+                cout << (unsigned short) table[i][j] << '\t';
+            }
+            cout << '\n';
+        }
+        this->QT.emplace(qtinform, table);
+        delete [] temp;
+    }
+}
+
 void JPEG::markerSOS()
 {
     cout << "Find marker \"Start of Scan\" " << strmarker(0xda, this->cursor - 2) << " !\n";
@@ -292,8 +327,6 @@ string strbitbuffer(unsigned long long buffer, unsigned short bitlength)
     }
     return temp.str();
 }
-
-
 
 signed long **JPEG::getNextTable()
 {
@@ -392,20 +425,9 @@ signed long **JPEG::getNextTable()
     return table;
 }
 
-
 void JPEG::decodeTables()
 {
-    this->findMarkers();
-    this->cursor = datacursor;
-    this->mcunum = 0;
-    this->ccid = 0;
-    this->hs = 0;
-    this->ws = 0;
-    this->buffer = 0;
-    this->bitlength = 0;
-    this->genMCUNumber();
-    cout << "Number of MCU: " << this->numberofmcu << '\n';
-
+    this->decodeStart();
     map<unsigned char, ofstream *> foutfiles;
     for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
@@ -414,10 +436,8 @@ void JPEG::decodeTables()
         foutfiles.emplace((*key)->id, fout);
 
     }
-
     while (mcunum != numberofmcu)
     {
-        cout << "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bSave " << mcunum << " MCU!" << flush;
         ofstream *fout = foutfiles[this->components[this->ccid]->id];
         signed long **table = this->getNextTable();
         for(unsigned char i = 0; i < this->sampleprecision; ++i)
@@ -430,6 +450,11 @@ void JPEG::decodeTables()
             (*fout) << table[i][sp1] << "\n";
         }
         *fout << "\n";
+        for(unsigned char i = 0; i < this->sampleprecision; ++i)
+        {
+            delete [] table[i];
+        }
+        delete [] table;
     }
     cout << "\n";
     for(auto key = foutfiles.begin(); key != foutfiles.end(); ++key)
@@ -454,46 +479,64 @@ void JPEG::extendBuffer()
 
 void JPEG::genMCUNumber()
 {
-    unsigned char hsample = 0;
-    unsigned char wsample = 0;
+    this->hsample = 0;
+    this->wsample = 0;
     for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
-        if ((*key)->sampwidth > wsample) wsample = (*key)->sampwidth;
-        if ((*key)->sampheigth > hsample) hsample = (*key)->sampheigth;
+        if ((*key)->sampwidth > this->wsample) this->wsample = (*key)->sampwidth;
+        if ((*key)->sampheigth > this->hsample) this->hsample = (*key)->sampheigth;
     }
-    hsample *= this->sampleprecision;
-    wsample *= this->sampleprecision;
-    unsigned long long mcuw = (this->width / wsample) + ((this->width % wsample) ? 1: 0);
-    unsigned long long mcuh = (this->height / hsample) + ((this->height % hsample) ? 1: 0);
-    this->numberofmcu = mcuh * mcuw;
+    this->hsample *= this->sampleprecision;
+    this->wsample *= this->sampleprecision;
+    this->mcuw = (this->width / this->wsample) + ((this->width % this->wsample) ? 1: 0);
+    this->mcuh = (this->height / this->hsample) + ((this->height % this->hsample) ? 1: 0);
+    this->numberofmcu = this->mcuw * this->mcuh;
 }
 
-void JPEG::markerDQT()
+double ** idct(signed long ** &table)
 {
-    cout << "Find marker \"Define Quantization Table\" " << strmarker(0xdb, this->cursor - 2) << " !\n";
-    unsigned short length = this->findLength();
-    unsigned long long endcursor = this->cursor + length;
-    while (this->cursor != endcursor)
+    double ** nt = new double * [8];
+    for (unsigned long x = 0; x < 8; ++x)
     {
-        unsigned char qtinform = this->readNumFromFile(1);
-        unsigned char qtprec = (qtinform >> 1) ? 16: 8;
-        qtinform &= 0x0F;
-        unsigned char ** table = new unsigned char * [qtprec];
-        for(unsigned char i = 0; i < qtprec; ++i) table[i] = new unsigned char [qtprec];
-        cout << "\tNumber: " << (unsigned short) qtinform << '\n';
-        cout << "\tPrecision: " << (unsigned short) qtprec << '\n';
-        cout << "\tTable:\n";
-        for(unsigned char i = 0; i< qtprec; ++i)
+        nt[x] = new double[8];
+        for(unsigned long y = 0; y < 8; ++y)
         {
-            cout << "\t\t";
-            for(unsigned char j = 0; j < qtprec; ++j)
+            double sumuv = 0;
+            for(unsigned long u = 0; u < 8; ++u)
             {
-                table[i][j] = this->readNumFromFile(1);
-                cout << (unsigned short) table[i][j] << '\t';
+                for(unsigned long v = 0; v < 8; ++v)
+                {
+                    double R = table[u][v]*cos((2 * x + 1) * u * M_PI / 16) * cos((2 * y + 1) * v * M_PI / 16);
+                    if((u == 0) && (v == 0)) R /= 2;
+                    sumuv += R;
+                }
             }
-            cout << '\n';
+            nt[x][y] = sumuv;
         }
-        this->QT.emplace(qtinform, table);
     }
+    for (unsigned long x = 0; x < 8; ++x) delete [] table[x];
+    delete [] table;
+    return nt;
+}
+
+void JPEG::decodeYCbCrtoRGB()
+{
+    //cout.setstate(ios::failbit);
+    this->decodeStart();
+    cout.clear();
+}
+
+void JPEG::decodeStart()
+{
+    this->findMarkers();
+    this->cursor = datacursor;
+    this->mcunum = 0;
+    this->ccid = 0;
+    this->hs = 0;
+    this->ws = 0;
+    this->buffer = 0;
+    this->bitlength = 0;
+    this->genMCUNumber();
+    cout << "Number of MCU: " << this->numberofmcu << '\n';
 }
 
