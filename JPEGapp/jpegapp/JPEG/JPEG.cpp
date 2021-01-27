@@ -295,7 +295,7 @@ void JPEG::saveClearJpeg()
 {
     this->findMarkers();
     string foutfilename = this->fin->getFileName();
-    foutfilename = foutfilename.substr(0, foutfilename.size() - 4) + ".clear.jpg";
+    foutfilename = foutfilename + ".clear.jpg";
     ofstream fout(foutfilename, ios::binary|ios::out);
     for(unsigned long long  i = 0; i < this->markersaddr.size() - 1; ++i)
     {
@@ -493,39 +493,6 @@ void JPEG::genMCUNumber()
     this->numberofmcu = this->mcuw * this->mcuh;
 }
 
-double ** idct(signed long ** &table)
-{
-    double ** nt = new double * [8];
-    for (unsigned long x = 0; x < 8; ++x)
-    {
-        nt[x] = new double[8];
-        for(unsigned long y = 0; y < 8; ++y)
-        {
-            double sumuv = 0;
-            for(unsigned long u = 0; u < 8; ++u)
-            {
-                for(unsigned long v = 0; v < 8; ++v)
-                {
-                    double R = table[u][v]*cos((2 * x + 1) * u * M_PI / 16) * cos((2 * y + 1) * v * M_PI / 16);
-                    if((u == 0) && (v == 0)) R /= 2;
-                    sumuv += R;
-                }
-            }
-            nt[x][y] = sumuv;
-        }
-    }
-    for (unsigned long x = 0; x < 8; ++x) delete [] table[x];
-    delete [] table;
-    return nt;
-}
-
-void JPEG::decodeYCbCrtoRGB()
-{
-    //cout.setstate(ios::failbit);
-    this->decodeStart();
-    cout.clear();
-}
-
 void JPEG::decodeStart()
 {
     this->findMarkers();
@@ -539,4 +506,118 @@ void JPEG::decodeStart()
     this->genMCUNumber();
     cout << "Number of MCU: " << this->numberofmcu << '\n';
 }
+
+void JPEG::step()
+{
+    Component * comp = this->components[this->ccid];
+    ++this->ws;
+    if (comp->sampwidth == this->ws)
+    {
+        this->ws = 0;
+        ++this->hs;
+        if (comp->sampheigth == this->hs)
+        {
+            this->hs = 0;
+            ++this->ccid;
+            if (this->ccid == this->components.size())
+            {
+                this->ccid = 0;
+                ++this->mcunum;
+                if (!(this->mcunum % this->restartinterval))
+                {
+                    unsigned long num = this->readNumFromFile(2);
+                    //cerr << hex << num << '\n' << flush;
+                    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+                    {
+                        (*key)->DC = 0;
+                    }
+                    this->buffer = 0;
+                    this->bitlength = 0;
+                }
+            }
+        }
+    }
+}
+
+void JPEG::getStats()
+{
+    this->decodeStart();
+    map<unsigned char, map<unsigned char, unsigned long long> *> DC;
+    map<unsigned char, map<unsigned char, unsigned long long> *> AC;
+    map<unsigned char, signed long> DCnum;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        DC.emplace((*key)->id, new map<unsigned char, unsigned long long>);
+        AC.emplace((*key)->id, new map<unsigned char, unsigned long long>);
+    }
+    while (mcunum != numberofmcu)
+    {
+        Component * comp = this->components[this->ccid];
+        Huffman * code = this->DC[comp->DCnum];
+        unsigned char sym, category, nulls;
+        signed long long num = 0;
+        while(!code->decode(this->buffer, this->bitlength, category)) this->extendBuffer();
+        if (DC[comp->id]->find(category) == DC[comp->id]->end())
+        {
+            DC[comp->id]->emplace(category, 1);
+        }
+        else ++((*DC[comp->id])[category]);
+        while(!Huffman::decodeCategory(category, this->buffer, this->bitlength, num)) this->extendBuffer();
+
+        for(unsigned short i = 1, size = this->sampleprecision*this->sampleprecision; i < size; ++i)
+        {
+            Huffman * code = this->AC[comp->ACnum];
+            while(!code->decode(this->buffer, this->bitlength, sym)) this->extendBuffer();
+
+            if (AC[comp->id]->find(sym) == AC[comp->id]->end())
+            {
+                AC[comp->id]->emplace(sym, 1);
+            }
+            else ++((*AC[comp->id])[sym]);
+            if (!sym) break;
+            nulls = sym >> 4;
+            while(nulls != 0)
+            {
+                ++i;
+                --nulls;
+            }
+            category = sym & 0x0F;
+            while(!Huffman::decodeCategory(category, this->buffer, this->bitlength, num)) this->extendBuffer();
+        }
+        this->step();
+    }
+    string foutfilename = this->fin->getFileName();
+    foutfilename = foutfilename + ".stats";
+    ofstream fout(foutfilename, ios::out);
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        map<unsigned char, unsigned long long> * table = DC[(*key)->id];
+        fout << JPEG::compnames[(*key)->id] << ' ';
+        if (this->restartinterval != 0xFFFFFFFFFFFFFFFF) fout << "IDC\n{";
+        else fout << "DC\n{";
+        bool ok = false;
+        for(auto key = table->begin(); key != table->end(); ++key)
+        {
+            if (ok)  fout <<", ";
+            ok = true;
+            fout << (unsigned short) key->first << ": " << key->second;
+        }
+        fout << "}\n";
+        delete DC[(*key)->id];
+        table = AC[(*key)->id];
+        fout << JPEG::compnames[(*key)->id] << ' ' << "AC\n{";
+        ok = false;
+        for(auto key = table->begin(); key != table->end(); ++key)
+        {
+            if (ok)  fout <<", ";
+            ok = true;
+            fout << (unsigned short) key->first << ": " << key->second;
+        }
+        fout << "}\n";
+        delete AC[(*key)->id];
+    }
+    fout.close();
+}
+
+
 

@@ -104,12 +104,14 @@ private:
     vector <double **> mcuCr;
     // Стартовая установка декодирования
     void decodeStart();
+    // Шаг декодирования
+    void step();
 public:
     JPEG(string filename);
     ~JPEG();
     void saveClearJpeg();
     void decodeTables();
-    void decodeYCbCrtoRGB();
+    void getStats();
 };
 
 
