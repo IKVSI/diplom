@@ -42,7 +42,7 @@ def main():
     ) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT MIN(fileid) FROM jpeg.files")
-            mn = cursor.fetchone()[0]
+            mn = 631
             cursor.execute("SELECT MAX(fileid) FROM jpeg.files")
             mx = cursor.fetchone()[0]
             print(mn, mx)
