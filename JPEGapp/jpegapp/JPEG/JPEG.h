@@ -106,6 +106,7 @@ private:
     void decodeStart();
     // Шаг декодирования
     void step();
+
 public:
     JPEG(string filename);
     ~JPEG();
