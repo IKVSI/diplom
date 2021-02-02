@@ -5,7 +5,6 @@
 #include "ReadFile.h"
 #include "Huffman.h"
 #include <algorithm>
-#include <csignal>
 #include <vector>
 #include <cmath>
 using namespace std;
@@ -25,7 +24,7 @@ class JPEG
 {
     const string compnames[6] = {"", "Y", "Cb", "Cr", "I", "Q"};
     const unsigned char neMARKER[9] = {0x0, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7};
-    const unsigned char clearMarkers[7] = {0xC0, 0xC4, 0xD8, 0xD9, 0xDA,  0xDB, 0xDD};
+    const unsigned char clearMarkers[4] = {0xC0, 0xD8, 0xD9, 0xDB};
     const unsigned char ZIGZAG[8][8] = {
         0,  1,  5,  6, 14, 15, 27, 28,
         2,  4,  7, 13, 16, 26, 29, 42,
@@ -98,14 +97,13 @@ private:
     // Функции для кодирования
     void extendBuffer();
     void genMCUNumber();
-    // Переменные для перевода YCbCr to RGB
-    vector <double **> mcuY;
-    vector <double **> mcuCb;
-    vector <double **> mcuCr;
     // Стартовая установка декодирования
     void decodeStart();
     // Шаг декодирования
     void step();
+    // Собрать статистику по файлу
+    map<unsigned char, map <bool, map<unsigned char, unsigned long long>>> stats;
+    void genStats();
 
 public:
     JPEG(string filename);
@@ -113,6 +111,7 @@ public:
     void saveClearJpeg();
     void decodeTables();
     void getStats();
+    static unsigned char getCategory(signed long a);
 };
 
 

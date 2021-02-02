@@ -293,8 +293,19 @@ void JPEG::markerSOS()
 
 void JPEG::saveClearJpeg()
 {
-    this->findMarkers();
-    string foutfilename = this->fin->getFileName();
+    this->genStats();
+    for(auto key = this->stats.begin(); key != this->stats.end(); ++key)
+    {
+        unsigned char id = key->first;
+        auto DCstat = key->second[false];
+        auto ACstat = key->second[true];
+        Huffman * DC = new Huffman(16);
+        DC->createFromFrequencies(DCstat);
+        Huffman * AC = new Huffman(16);
+        AC->createFromFrequencies(ACstat);
+    }
+    this->stats.clear();
+    /*string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename + ".clear.jpg";
     ofstream fout(foutfilename, ios::binary|ios::out);
     for(unsigned long long  i = 0; i < this->markersaddr.size() - 1; ++i)
@@ -311,9 +322,8 @@ void JPEG::saveClearJpeg()
             delete [] c;
         }
     }
-    char end[] = {'\xFF', '\xD9'};
-    fout.write(end, 2);
-    cout << "FILE SAVED TO \"" << foutfilename <<"\"\n";
+    */
+    //cout << "FILE SAVED TO \"" << foutfilename <<"\"\n";
 }
 
 string strbitbuffer(unsigned long long buffer, unsigned short bitlength)
@@ -394,34 +404,6 @@ signed long **JPEG::getNextTable()
         }
     }
     delete [] mass;
-
-    ++this->ws;
-    if (comp->sampwidth == this->ws)
-    {
-        this->ws = 0;
-        ++this->hs;
-        if (comp->sampheigth == this->hs)
-        {
-            this->hs = 0;
-            ++this->ccid;
-            if (this->ccid == this->components.size())
-            {
-                this->ccid = 0;
-                ++this->mcunum;
-                if (!(this->mcunum % this->restartinterval))
-                {
-                    unsigned long num = this->readNumFromFile(2);
-                    //cerr << hex << num << '\n' << flush;
-                    for(auto key = this->components.begin(); key != this->components.end(); ++key)
-                    {
-                        (*key)->DC = 0;
-                    }
-                    this->buffer = 0;
-                    this->bitlength = 0;
-                }
-            }
-        }
-    }
     return table;
 }
 
@@ -436,10 +418,11 @@ void JPEG::decodeTables()
         foutfiles.emplace((*key)->id, fout);
 
     }
-    while (mcunum != numberofmcu)
+    while (this->mcunum != this->numberofmcu)
     {
         ofstream *fout = foutfiles[this->components[this->ccid]->id];
         signed long **table = this->getNextTable();
+        this->step();
         for(unsigned char i = 0; i < this->sampleprecision; ++i)
         {
             unsigned char sp1 = this->sampleprecision - 1;
@@ -541,60 +524,15 @@ void JPEG::step()
 
 void JPEG::getStats()
 {
-    this->decodeStart();
-    map<unsigned char, map<unsigned char, unsigned long long> *> DC;
-    map<unsigned char, map<unsigned char, unsigned long long> *> AC;
-    map<unsigned char, signed long> DCnum;
-    for(auto key = this->components.begin(); key != this->components.end(); ++key)
-    {
-        DC.emplace((*key)->id, new map<unsigned char, unsigned long long>);
-        AC.emplace((*key)->id, new map<unsigned char, unsigned long long>);
-    }
-    while (mcunum != numberofmcu)
-    {
-        Component * comp = this->components[this->ccid];
-        Huffman * code = this->DC[comp->DCnum];
-        unsigned char sym, category, nulls;
-        signed long long num = 0;
-        while(!code->decode(this->buffer, this->bitlength, category)) this->extendBuffer();
-        if (DC[comp->id]->find(category) == DC[comp->id]->end())
-        {
-            DC[comp->id]->emplace(category, 1);
-        }
-        else ++((*DC[comp->id])[category]);
-        while(!Huffman::decodeCategory(category, this->buffer, this->bitlength, num)) this->extendBuffer();
-
-        for(unsigned short i = 1, size = this->sampleprecision*this->sampleprecision; i < size; ++i)
-        {
-            Huffman * code = this->AC[comp->ACnum];
-            while(!code->decode(this->buffer, this->bitlength, sym)) this->extendBuffer();
-
-            if (AC[comp->id]->find(sym) == AC[comp->id]->end())
-            {
-                AC[comp->id]->emplace(sym, 1);
-            }
-            else ++((*AC[comp->id])[sym]);
-            if (!sym) break;
-            nulls = sym >> 4;
-            while(nulls != 0)
-            {
-                ++i;
-                --nulls;
-            }
-            category = sym & 0x0F;
-            while(!Huffman::decodeCategory(category, this->buffer, this->bitlength, num)) this->extendBuffer();
-        }
-        this->step();
-    }
+    this->genStats();
     string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename + ".stats";
     ofstream fout(foutfilename, ios::out);
     for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
-        map<unsigned char, unsigned long long> * table = DC[(*key)->id];
+        map<unsigned char, unsigned long long> * table = &this->stats[(*key)->id][false];
         fout << JPEG::compnames[(*key)->id] << ' ';
-        if (this->restartinterval != 0xFFFFFFFFFFFFFFFF) fout << "IDC\n{";
-        else fout << "DC\n{";
+        fout << "DC\n{";
         bool ok = false;
         for(auto key = table->begin(); key != table->end(); ++key)
         {
@@ -603,8 +541,7 @@ void JPEG::getStats()
             fout << (unsigned short) key->first << ": " << key->second;
         }
         fout << "}\n";
-        delete DC[(*key)->id];
-        table = AC[(*key)->id];
+        table = &this->stats[(*key)->id][true];
         fout << JPEG::compnames[(*key)->id] << ' ' << "AC\n{";
         ok = false;
         for(auto key = table->begin(); key != table->end(); ++key)
@@ -614,9 +551,83 @@ void JPEG::getStats()
             fout << (unsigned short) key->first << ": " << key->second;
         }
         fout << "}\n";
-        delete AC[(*key)->id];
     }
     fout.close();
+    this->stats.clear();
+}
+
+void JPEG::genStats()
+{
+    //map<unsigned char, map <bool, map<unsigned char, unsigned long>>>
+    this->decodeStart();
+    map<unsigned char, signed long> DC;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        DC.emplace((*key)->id, 0);
+        this->stats.emplace((*key)->id, map <bool, map<unsigned char, unsigned long long>>());
+        this->stats[(*key)->id].emplace(true, map<unsigned char, unsigned long long>()); // AC
+        this->stats[(*key)->id].emplace(false, map<unsigned char, unsigned long long>()); // DC
+    }
+    while (this->mcunum != this->numberofmcu)
+    {
+        signed long ** table = this->getNextTable();
+        unsigned short size = this->sampleprecision * this->sampleprecision;
+        signed long * mass = new signed long [size];
+        for(unsigned char i = 0; i < this->sampleprecision; ++i)
+        {
+            for(unsigned char j = 0; j < this->sampleprecision; ++j)
+            {
+                mass[JPEG::ZIGZAG[i][j]] = table[i][j];
+            }
+            delete [] table[i];
+        }
+        delete [] table;
+        map<unsigned char, unsigned long long> * temp = &this->stats[this->components[this->ccid]->id][false];
+        unsigned char category = JPEG::getCategory(DC[this->components[this->ccid]->id] - mass[0]);
+        if (temp->find(category) == temp->end()) temp->emplace(category, 0);
+        (*temp)[category] = (*temp)[category] + 1;
+        DC[this->components[this->ccid]->id] = mass[0];
+        unsigned short nulls = size - 1;
+        temp = &this->stats[this->components[this->ccid]->id][true];
+        while ((!mass[nulls]) && (nulls != 0)) --nulls;
+        if (nulls != size - 1)
+        {
+            size = nulls + 1;
+            category = 0;
+            if (temp->find(category) == temp->end()) temp->emplace(category, 0);
+            ++(*temp)[category];
+        }
+        nulls = 0;
+        for(unsigned short i = 1; i < size; ++i)
+        {
+            if ((mass[i]) || (nulls == 15))
+            {
+                category = JPEG::getCategory(mass[i]) | (nulls << 4);
+                if (temp->find(category) == temp->end()) temp->emplace(category, 0);
+                ++(*temp)[category];
+                nulls = 0;
+            }
+            else ++nulls;
+        }
+        delete [] mass;
+        this->step();
+    }
+}
+
+unsigned char JPEG::getCategory(signed long a)
+{
+    if (a)
+    {
+        signed long b = 1;
+        unsigned char i = 0;
+        while ((a >= b) || (a <= -b))
+        {
+            b <<= 1;
+            ++i;
+        }
+        return i;
+    }
+    else return 0;
 }
 
 

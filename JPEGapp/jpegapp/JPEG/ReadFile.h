@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <climits>
 #include <cstring>
+#include <csignal>
 #include <map>
 
 using namespace std;

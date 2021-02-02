@@ -1,7 +1,3 @@
-/*
- *
- */
-
 #include "JPEG/JPEG.h"
 
 int main (int argc,  char ** args)

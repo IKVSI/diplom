@@ -4,6 +4,7 @@ ReadFile::ReadFile(string filename)
 {
 	this->filename = filename;
 	this->fin = ifstream(this->filename, ios::in | ios::binary);
+	if (!(this->fin.is_open())) raise(5);
 	this->fin.seekg(0, ios_base::end);
 	this->filesize = this->fin.tellg();
 	this->maxblock = this->filesize / this->buffersize;

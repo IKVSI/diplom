@@ -6,11 +6,11 @@ set(CMAKE_EXE_LINKER_FLAGS -static)
 
 include_directories(JPEG)
 
-add_executable(jpegcompress
+add_executable(jpegtables
         JPEG/ReadFile.cpp
         JPEG/ReadFile.h
         JPEG/JPEG.cpp
         JPEG/JPEG.h
         JPEG/Huffman.cpp
         JPEG/Huffman.h
-        jpegcompress.cpp)
+        jpegtables.cpp)
