@@ -29,6 +29,7 @@ public:
     string showTable();
     void createFromJPEG(unsigned char * counts, unsigned char * symbols);
     void createFromFrequencies(map<unsigned char, unsigned long long> freq);
+    string showData();
     ~Huffman();
 };
 

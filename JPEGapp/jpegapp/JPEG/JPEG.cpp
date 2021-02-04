@@ -294,15 +294,57 @@ void JPEG::markerSOS()
 void JPEG::saveClearJpeg()
 {
     this->genStats();
-    for(auto key = this->stats.begin(); key != this->stats.end(); ++key)
+    map<unsigned char, Huffman *> DC, AC;
+    map<unsigned char, map<unsigned char, unsigned long long>> DCstat, ACstat;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
-        unsigned char id = key->first;
-        auto DCstat = key->second[false];
-        auto ACstat = key->second[true];
-        Huffman * DC = new Huffman(16);
-        DC->createFromFrequencies(DCstat);
-        Huffman * AC = new Huffman(16);
-        AC->createFromFrequencies(ACstat);
+        if (DCstat.find((*key)->DCnum) == DCstat.end())
+        {
+            DCstat.emplace((*key)->DCnum, map<unsigned char, unsigned long long>());
+        }
+        map<unsigned char, unsigned long long> * dc = &DCstat[(*key)->DCnum];
+        for(auto jey = this->stats[(*key)->id][false].begin(); jey != this->stats[(*key)->id][false].end(); ++jey)
+        {
+            if (dc->find(jey->first) == dc->end()) dc->emplace(jey->first, jey->second);
+            else (*dc)[jey->first] += jey->second;
+        }
+
+        if (ACstat.find((*key)->ACnum) == ACstat.end())
+        {
+            ACstat.emplace((*key)->ACnum, map<unsigned char, unsigned long long>());
+        }
+        map<unsigned char, unsigned long long> * ac = &ACstat[(*key)->ACnum];
+        for(auto jey = this->stats[(*key)->id][true].begin(); jey != this->stats[(*key)->id][true].end(); ++jey)
+        {
+            if (ac->find(jey->first) == ac->end()) ac->emplace(jey->first, jey->second);
+            else (*ac)[jey->first] += jey->second;
+        }
+    }
+    for(auto key = DCstat.begin(); key != DCstat.end(); ++key)
+    {
+        cout << "DC\n" << flush;
+        Huffman * dc = new Huffman(16);
+        dc->createFromFrequencies(DCstat[key->first]);
+        DC.emplace(key->first, dc);
+        cout << "AC\n" << flush;
+        Huffman * ac = new Huffman(16);
+        auto temp = ACstat[key->first];
+        ac->createFromFrequencies(temp);
+        AC.emplace(key->first, ac);
+    }
+    for(auto key = this->DC.begin(); key !=this->DC.end(); ++key)
+    {
+        cout << "OLD " << (unsigned short) key->first << '\n';
+        cout << this->DC[key->first]->showData() << '\n';
+        cout << "NEW " << (unsigned short) key->first << '\n';
+        cout << DC[key->first]->showData() << '\n';
+    }
+    for(auto key = this->AC.begin(); key !=this->AC.end(); ++key)
+    {
+        cout << "OLD " << (unsigned short) key->first << '\n';
+        cout << this->AC[key->first]->showData() << '\n';
+        cout << "NEW " << (unsigned short) key->first << '\n';
+        cout << AC[key->first]->showData() << '\n';
     }
     this->stats.clear();
     /*string foutfilename = this->fin->getFileName();

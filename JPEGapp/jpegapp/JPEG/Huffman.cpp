@@ -115,14 +115,19 @@ struct Items
 void Huffman::createFromFrequencies(map<unsigned char, unsigned long long int> freq)
 {
     vector<Items> K;
+    unsigned long long b = 0;
     for(auto key = freq.begin(); key != freq.end(); ++key)
     {
+        b += key->second;
         Items a;
         a.weight = key->second;
         a.bts.push_back(key->first);
         K.push_back(a);
     }
     sort(K.begin(), K.end(), [](Items a, Items b) { return a.weight > b.weight; });
+    cout <<"\n[";
+    for(auto key = K.begin(); key != K.end(); ++key) cout << "(" << (unsigned short) (*key).bts[0] << ", " << (*key).weight << "), ";
+    cout << "\b\b]\n" << flush;
     unsigned long X = K.size() - 1;
     vector<unsigned long> S;
     vector<signed char> D;
@@ -242,4 +247,44 @@ void Huffman::createFromClass()
             k = 0;
         }
     }
+}
+
+string Huffman::showData()
+{
+    unsigned short hlength = this->bitlength;
+    stringstream  temp;
+    --hlength;
+    unsigned short k = 0;
+    temp << "[ ";
+    for(unsigned short i = 0; i < hlength; ++i)
+    {
+        temp << i + 1 << ": ( ";
+        if (counts[i])
+        {
+            unsigned char cnt = counts[i] - 1;
+            for(unsigned short j = 0; j < cnt; ++j)
+            {
+                temp << (unsigned short) symbols[k] << ", ";
+                ++k;
+            }
+            temp << (unsigned short) symbols[k];
+            ++k;
+        }
+        temp << " ), ";
+    }
+    temp << hlength + 1 << ": ( ";
+    if (counts[hlength])
+    {
+        unsigned char cnt = counts[hlength] - 1;
+        for(unsigned short j = 0; j < cnt; ++j)
+        {
+            temp << (unsigned short) symbols[k] << ", ";
+            ++k;
+        }
+        temp << (unsigned short) symbols[k];
+        ++k;
+    }
+    temp << " ) ";
+    temp << "]";
+    return temp.str();
 }
