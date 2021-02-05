@@ -25,7 +25,7 @@ def main():
                 X = len(dct) - 1
                 d0 = 0
                 x = 1
-                while (x < X):
+                while (x <= X):
                     x <<= 1
                     d0 += 1
                 x >>= 1
@@ -66,7 +66,9 @@ def main():
                             t = ((ka[0] + kb[0]), t)
                             l1 = L[d+1]
                             for i in range(len(l1)):
-                                if K[l1[i]][0] <= t[0]:
+                                if K[l1[i]][0] < t[0]:
+                                    break
+                                elif (K[l1[i]][0] == t[0]) and (len(K[l1[i]][1]) > len(t[1])):
                                     break
                             l1.insert(i, len(K))
                             K.append(t)

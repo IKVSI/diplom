@@ -49,6 +49,7 @@ JPEG::~JPEG()
 
 void JPEG::findMarkers()
 {
+    if (this->markersaddr.size()) return;
     this->cursor = 0;
     while (this->cursor < this->fin->getFileSize())
     {
@@ -295,14 +296,14 @@ void JPEG::saveClearJpeg()
 {
     this->genStats();
     map<unsigned char, Huffman *> DC, AC;
-    map<unsigned char, map<unsigned char, unsigned long long>> DCstat, ACstat;
+    map<unsigned char, map<unsigned short, unsigned long long>> DCstat, ACstat;
     for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
         if (DCstat.find((*key)->DCnum) == DCstat.end())
         {
-            DCstat.emplace((*key)->DCnum, map<unsigned char, unsigned long long>());
+            DCstat.emplace((*key)->DCnum, map<unsigned short, unsigned long long>());
         }
-        map<unsigned char, unsigned long long> * dc = &DCstat[(*key)->DCnum];
+        map<unsigned short, unsigned long long> * dc = &DCstat[(*key)->DCnum];
         for(auto jey = this->stats[(*key)->id][false].begin(); jey != this->stats[(*key)->id][false].end(); ++jey)
         {
             if (dc->find(jey->first) == dc->end()) dc->emplace(jey->first, jey->second);
@@ -311,9 +312,9 @@ void JPEG::saveClearJpeg()
 
         if (ACstat.find((*key)->ACnum) == ACstat.end())
         {
-            ACstat.emplace((*key)->ACnum, map<unsigned char, unsigned long long>());
+            ACstat.emplace((*key)->ACnum, map<unsigned short, unsigned long long>());
         }
-        map<unsigned char, unsigned long long> * ac = &ACstat[(*key)->ACnum];
+        map<unsigned short, unsigned long long> * ac = &ACstat[(*key)->ACnum];
         for(auto jey = this->stats[(*key)->id][true].begin(); jey != this->stats[(*key)->id][true].end(); ++jey)
         {
             if (ac->find(jey->first) == ac->end()) ac->emplace(jey->first, jey->second);
@@ -322,50 +323,104 @@ void JPEG::saveClearJpeg()
     }
     for(auto key = DCstat.begin(); key != DCstat.end(); ++key)
     {
-        cout << "DC\n" << flush;
         Huffman * dc = new Huffman(16);
         dc->createFromFrequencies(DCstat[key->first]);
         DC.emplace(key->first, dc);
-        cout << "AC\n" << flush;
         Huffman * ac = new Huffman(16);
         auto temp = ACstat[key->first];
         ac->createFromFrequencies(temp);
         AC.emplace(key->first, ac);
     }
-    for(auto key = this->DC.begin(); key !=this->DC.end(); ++key)
+    unsigned long long s;
+    map<unsigned char, Component> comp;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
-        cout << "OLD " << (unsigned short) key->first << '\n';
-        cout << this->DC[key->first]->showData() << '\n';
-        cout << "NEW " << (unsigned short) key->first << '\n';
-        cout << DC[key->first]->showData() << '\n';
+        comp.emplace((*key)->id, *(*key));
     }
-    for(auto key = this->AC.begin(); key !=this->AC.end(); ++key)
-    {
-        cout << "OLD " << (unsigned short) key->first << '\n';
-        cout << this->AC[key->first]->showData() << '\n';
-        cout << "NEW " << (unsigned short) key->first << '\n';
-        cout << AC[key->first]->showData() << '\n';
-    }
-    this->stats.clear();
-    /*string foutfilename = this->fin->getFileName();
+    vector<unsigned char> data = this->genJPEGData(DC, AC, comp);
+    string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename + ".clear.jpg";
     ofstream fout(foutfilename, ios::binary|ios::out);
-    for(unsigned long long  i = 0; i < this->markersaddr.size() - 1; ++i)
+    unsigned long long SOS;
+    for(unsigned long long i = 0; i < this->markersaddr.size(); ++i)
     {
-        if (binary_search(JPEG::clearMarkers, JPEG::clearMarkers + 7, this->markerstype[i]))
+        switch (this->markerstype[i])
         {
-            stringstream  temp;
-            temp << "0x" << hex << setfill('0') << setw(2) << (unsigned short)this->markerstype[i];
-            cout << "Write Marker \"" << temp.str() << "\" !\n";
-            unsigned long long addrstart = this->markersaddr[i];
-            unsigned long long length = this->markersaddr[i + 1] - addrstart;
-            unsigned char * c = this->fin->readBytes(addrstart, length);
-            fout.write((char *) c, length);
-            delete [] c;
+            case 0xDA:
+                SOS = this->markersaddr[i];
+                break;
+            case 0xD8:
+            case 0xDB:
+            case 0xC0:
+                unsigned long long addrstart = this->markersaddr[i];
+                unsigned long long length = this->markersaddr[i + 1] - addrstart;
+                unsigned char * c = this->fin->readBytes(addrstart, length);
+                fout.write((char *) c, length);
+                delete [] c;
+                break;
         }
     }
-    */
-    //cout << "FILE SAVED TO \"" << foutfilename <<"\"\n";
+    // marker 0xC4
+    vector<unsigned char> c4;
+    for(auto key: DC)
+    {
+        unsigned long long size;
+        c4.push_back(key.first);
+        unsigned char * p = key.second->huffmanSave(size);
+        for(unsigned long long i = 0; i < size; ++i) c4.push_back(p[i]);
+        delete [] p;
+    }
+    for(auto key: AC)
+    {
+        unsigned long long size;
+        c4.push_back((1 << 4) | key.first);
+        unsigned char * p = key.second->huffmanSave(size);
+        for(unsigned long long i = 0; i < size; ++i) c4.push_back(p[i]);
+        delete [] p;
+    }
+    /*
+    for(auto key: this->DC)
+    {
+        cout << "NUM OLD: " << key.first << "\n" << key.second->showData() << '\n';
+        cout << "NUM NEW: " << key.first << "\n" << DC[key.first]->showData() << '\n';
+    }
+    for(auto key: this->AC)
+    {
+        cout << "NUM OLD: " << key.first << "\n" << key.second->showData() << '\n';
+        cout << "NUM NEW: " << key.first << "\n" << AC[key.first]->showData() << '\n';
+    }
+     */
+    unsigned long long length = c4.size()+2;
+    unsigned char C[4];
+    C[0] = 0xFF;
+    C[1] = 0xC4;
+    C[2] = length >> 8;
+    C[3] = length & 0x00FF;
+    fout.write((char *)C, 4);
+    unsigned char * p = new unsigned char[c4.size()];
+    for(unsigned long long i = 0; i < c4.size(); ++i) p[i] = c4[i];
+    fout.write((char *) p, c4.size());
+    delete [] p;
+
+    this->cursor = SOS + 2;
+    length = this->readNumFromFile(2) + 2;
+    p = this->fin->readBytes(SOS, length);
+    fout.write((char *) p, length);
+    delete [] p;
+
+    p = new unsigned char[data.size()];
+    for(unsigned long long i = 0; i < data.size(); ++i) p[i] = data[i];
+    fout.write((char *) p, data.size());
+    delete [] p;
+    C[0] = 0xFF;
+    C[1] = 0xD9;
+    fout.write((char *) C, 2);
+
+    for(auto key = DC.begin(); key != DC.end(); ++key) delete key->second;
+    for(auto key = AC.begin(); key != AC.end(); ++key) delete key->second;
+    this->stats.clear();
+
+    cout << "FILE SAVED TO \"" << foutfilename <<"\"\n";
 }
 
 string strbitbuffer(unsigned long long buffer, unsigned short bitlength)
@@ -394,7 +449,7 @@ signed long **JPEG::getNextTable()
 
     Huffman * code = this->DC[comp->DCnum];
     unsigned char sym, category, nulls;
-    signed long long num = 0;
+    signed long num = 0;
 
     //cout << "Buffer: " << strbitbuffer(this->buffer, this->bitlength) << '\n';
     while(!code->decode(this->buffer, this->bitlength, category))
@@ -528,7 +583,14 @@ void JPEG::decodeStart()
     this->ws = 0;
     this->buffer = 0;
     this->bitlength = 0;
+    this->outbuffer = 0;
+    this->outbitlength = 0;
     this->genMCUNumber();
+    for(auto key:this->components)
+    {
+        key->DC = 0;
+        key->outDC = 0;
+    }
     cout << "Number of MCU: " << this->numberofmcu << '\n';
 }
 
@@ -671,6 +733,111 @@ unsigned char JPEG::getCategory(signed long a)
     }
     else return 0;
 }
+
+vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp)
+{
+    this->decodeStart();
+    vector <unsigned char> data;
+    while (this->mcunum != this->numberofmcu)
+    {
+        signed long ** table = this->getNextTable();
+        unsigned long masssize = this->sampleprecision * this->sampleprecision;
+        signed long * mass = new signed long[masssize];
+        for(unsigned i = 0; i < this->sampleprecision; ++i)
+        {
+            for(unsigned j = 0; j < this->sampleprecision; ++j)
+            {
+                mass[JPEG::ZIGZAG[i][j]] = table[i][j];
+            }
+        }
+        while(!mass[masssize - 1]) --masssize;
+        signed long dc = mass[0] - this->components[this->ccid]->outDC;
+        unsigned char category = JPEG::getCategory(dc);
+        DC[comp[this->components[this->ccid]->id].DCnum]->encode(this->outbuffer, this->outbitlength, category);
+        while (this->outbitlength >= 8)
+        {
+            data.push_back(this->byteFromOutBuffer());
+            if (data.back() == 0xFF) data.push_back(0);
+        }
+        Huffman::encodeCategory(category, this->outbuffer, this->outbitlength, dc);
+        while (this->outbitlength >= 8)
+        {
+            data.push_back(this->byteFromOutBuffer());
+            if (data.back() == 0xFF) data.push_back(0);
+        }
+        unsigned char nulls = 0;
+        for(unsigned long i = 1; i < masssize; ++i)
+        {
+            if (mass[i] || (nulls == 15))
+            {
+                category = JPEG::getCategory(mass[i]);
+                nulls = (nulls << 4) | category;
+                AC[comp[this->components[this->ccid]->id].ACnum]->encode(this->outbuffer, this->outbitlength, nulls);
+                while (this->outbitlength >= 8)
+                {
+                    data.push_back(this->byteFromOutBuffer());
+                    if (data.back() == 0xFF) data.push_back(0);
+                }
+                Huffman::encodeCategory(category, this->outbuffer, this->outbitlength, mass[i]);
+                while (this->outbitlength >= 8)
+                {
+                    data.push_back(this->byteFromOutBuffer());
+                    if (data.back() == 0xFF) data.push_back(0);
+                }
+                nulls = 0;
+            }
+            else ++nulls;
+        }
+        if (masssize != (this->sampleprecision * this->sampleprecision))
+        {
+            category = 0;
+            AC[this->components[this->ccid]->DCnum]->encode(this->outbuffer, this->outbitlength, category);
+            while (this->outbitlength >= 8)
+            {
+                data.push_back(this->byteFromOutBuffer());
+                if (data.back() == 0xFF) data.push_back(0);
+            }
+        }
+        this->components[this->ccid]->outDC = mass[0];
+        delete [] mass;
+        for(unsigned short i = 0; i < this->sampleprecision; ++i) delete [] table[i];
+        delete [] table;
+        this->step();
+    }
+    if (this->outbitlength)
+    {
+        this->outbuffer++;
+        this->outbuffer <<= (8 - this->outbitlength);
+        this->outbuffer--;
+        this->outbitlength = 8;
+        data.push_back(this->byteFromOutBuffer());
+    }
+    return data;
+}
+
+string bin(unsigned long long a)
+{
+    stringstream temp;
+    for(unsigned long long i = 0x8000000000000000; i != 0; i >>= 1)
+    {
+        short p = (a&i) ? 1 : 0;
+        temp << p;
+    }
+    return temp.str();
+}
+
+unsigned char JPEG::byteFromOutBuffer()
+{
+    //cout << "OUT\n";
+    //cout << "BIN: " << bin(this->outbuffer) << " LENGTH: " << this->outbitlength << "\n";
+    this->outbitlength -= 8;
+    unsigned char sym = this->outbuffer >> this->outbitlength;
+    unsigned long long a = (1 << this->outbitlength) - 1;
+    this->outbuffer &= a;
+    //cout << "BIN: " << bin(this->outbuffer) << " LENGTH: " << this->outbitlength << "\n";
+    return sym;
+}
+
 
 
 

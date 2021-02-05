@@ -18,13 +18,13 @@ struct Component
     unsigned char ACnum;
     unsigned char DCnum;
     signed long DC = 0;
+    signed long outDC = 0;
 };
 
 class JPEG
 {
     const string compnames[6] = {"", "Y", "Cb", "Cr", "I", "Q"};
     const unsigned char neMARKER[9] = {0x0, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7};
-    const unsigned char clearMarkers[4] = {0xC0, 0xD8, 0xD9, 0xDB};
     const unsigned char ZIGZAG[8][8] = {
         0,  1,  5,  6, 14, 15, 27, 28,
         2,  4,  7, 13, 16, 26, 29, 42,
@@ -89,6 +89,8 @@ private:
     unsigned char ws;
     unsigned long long buffer;
     unsigned short bitlength;
+    unsigned long long outbuffer;
+    unsigned short outbitlength;
     unsigned long long numberofmcu;
     unsigned long long mcuw;
     unsigned long long mcuh;
@@ -96,6 +98,7 @@ private:
     unsigned char wsample;
     // Функции для кодирования
     void extendBuffer();
+    unsigned char byteFromOutBuffer();
     void genMCUNumber();
     // Стартовая установка декодирования
     void decodeStart();
@@ -105,6 +108,7 @@ private:
     map<unsigned char, map <bool, map<unsigned char, unsigned long long>>> stats;
     void genStats();
 
+    vector <unsigned char> genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp);
 public:
     JPEG(string filename);
     ~JPEG();

@@ -1,7 +1,3 @@
-//
-// Created by kvs on 13.01.2021.
-//
-
 #include "Huffman.h"
 
 Huffman::Huffman(unsigned short bitlength)
@@ -46,10 +42,21 @@ void Huffman::createFromJPEG(unsigned char *counts, unsigned char *symbols)
     this->createFromClass();
 }
 
-string bin(unsigned long a, unsigned char bits)
+string bin(unsigned long long a, unsigned char bits)
 {
     stringstream temp;
     for(unsigned long i = (1 << (bits - 1)); i != 0; i >>= 1)
+    {
+        short p = (a&i) ? 1 : 0;
+        temp << p;
+    }
+    return temp.str();
+}
+
+string binn(unsigned long long a)
+{
+    stringstream temp;
+    for(unsigned long long i = 0x8000000000000000; i != 0; i >>= 1)
     {
         short p = (a&i) ? 1 : 0;
         temp << p;
@@ -87,12 +94,12 @@ bool Huffman::decode(unsigned long long &a, unsigned short &bitlength, unsigned 
     return false;
 }
 
-bool Huffman::decodeCategory(unsigned char category, unsigned long long int &buffer, unsigned short &bitlength, signed long long &decodenum)
+bool Huffman::decodeCategory(unsigned char category, unsigned long long int &buffer, unsigned short &btlength, signed long &decodenum)
 {
-    if (category > bitlength) return false;
-    bitlength -= category;
-    unsigned long long temp = buffer >> bitlength;
-    buffer &= ((1 << bitlength) - 1);
+    if (category > btlength) return false;
+    btlength -= category;
+    unsigned long long temp = buffer >> btlength;
+    buffer &= ((1 << btlength) - 1);
     if (category) {
         decodenum = (1 << (category - 1));
         if (temp >= decodenum) decodenum = temp;
@@ -109,11 +116,12 @@ bool Huffman::decodeCategory(unsigned char category, unsigned long long int &buf
 struct Items
 {
     unsigned long long weight;
-    vector<unsigned char> bts;
+    vector<unsigned short> bts;
 };
 
-void Huffman::createFromFrequencies(map<unsigned char, unsigned long long int> freq)
+void Huffman::createFromFrequencies(map<unsigned short, unsigned long long int> freq)
 {
+    freq.emplace(0x100, 0);
     vector<Items> K;
     unsigned long long b = 0;
     for(auto key = freq.begin(); key != freq.end(); ++key)
@@ -125,16 +133,13 @@ void Huffman::createFromFrequencies(map<unsigned char, unsigned long long int> f
         K.push_back(a);
     }
     sort(K.begin(), K.end(), [](Items a, Items b) { return a.weight > b.weight; });
-    cout <<"\n[";
-    for(auto key = K.begin(); key != K.end(); ++key) cout << "(" << (unsigned short) (*key).bts[0] << ", " << (*key).weight << "), ";
-    cout << "\b\b]\n" << flush;
     unsigned long X = K.size() - 1;
     vector<unsigned long> S;
     vector<signed char> D;
     vector<bool> M;
     signed char d0 = 0;
     unsigned long x = 1;
-    while(x < X)
+    while(x <= X)
     {
         ++d0;
         x <<= 1;
@@ -144,7 +149,7 @@ void Huffman::createFromFrequencies(map<unsigned char, unsigned long long int> f
     map<signed char, vector <unsigned long>> L;
     for(unsigned long tempx = X; d0 != - this->bitlength - 1; --d0, x >>= 1)
     {
-        if ((x) && (tempx >= x))
+        if ((tempx) && (tempx >= x))
         {
             tempx -= x;
             M.push_back(1);
@@ -179,7 +184,8 @@ void Huffman::createFromFrequencies(map<unsigned char, unsigned long long int> f
                 auto key = L[d+1].begin();
                 while (key != L[d+1].end())
                 {
-                    if (K[(*key)].weight <= t.weight) break;
+                    if (K[(*key)].weight < t.weight) break;
+                    else if ((K[(*key)].weight == t.weight) && (K[(*key)].bts.size() < t.bts.size())) break;
                     ++key;
                 }
                 L[d+1].insert(key, K.size());
@@ -192,14 +198,13 @@ void Huffman::createFromFrequencies(map<unsigned char, unsigned long long int> f
     map<unsigned char, unsigned char> P;
     for(auto key = freq.begin(); key != freq.end(); ++key)
     {
-        P.emplace(key->first, 0);
+        if (key->first != 0x100) P.emplace(key->first, 0);
     }
     for(auto key = S.begin(); key != S.end(); ++key)
     {
         for(auto jey = K[*key].bts.begin(); jey != K[*key].bts.end(); ++jey)
         {
-
-            ++P[(*jey)];
+            if (*jey != 0x100) ++P[(*jey)];
         }
     }
     for(unsigned char i = 0; i < this->bitlength; ++i) this->counts.push_back(0);
@@ -230,6 +235,7 @@ void Huffman::createFromClass()
         if (k != this->counts[i])
         {
             unsigned long long ts = counter << (this->bitlength - i - 1);
+            this->codes.emplace(this->symbols[j], counter);
             ++counter;
             unsigned long long te = counter << (this->bitlength - i - 1);
             for(unsigned long long ti = ts; ti < te; ++ti)
@@ -288,3 +294,37 @@ string Huffman::showData()
     temp << "]";
     return temp.str();
 }
+
+unsigned char *Huffman::huffmanSave(unsigned long long & size)
+{
+    size = this->counts.size() + this->symbols.size();
+    unsigned char * r = new unsigned char[size];
+    unsigned long long j = 0;
+    for(auto key : this->counts) r[j++] = key;
+    for(auto key : this->symbols) r[j++] = key;
+    return r;
+}
+
+ void Huffman::encode(unsigned long long int &a, unsigned short &btlength, unsigned char &decodesym)
+{
+    //cout << "ENC\n";
+    //cout << "BIN: " << binn(a) << " LENGTH: " << btlength << '\n';
+    unsigned long long b = this->codes[decodesym];
+    unsigned char bits = this->codelength[decodesym];
+    a <<= bits;
+    a |= b;
+    btlength += bits;
+    //cout << "BIN: " << binn(a) << " LENGTH: " << btlength << '\n';
+}
+
+void Huffman::encodeCategory(unsigned char category, unsigned long long int &buffer, unsigned short &bitlength, long int &encodenum)
+{
+    //cout << "ENCCAT\n";
+    //cout << "BIN: " << binn(buffer) << " LENGTH: " << bitlength << '\n';
+    buffer <<= category;
+    bitlength += category;
+    if (encodenum > 0) buffer |=encodenum;
+    else buffer |= (encodenum + ((1 << category) - 1));
+    //cout << "BIN: " << binn(buffer) << " LENGTH: " << bitlength << '\n';
+}
+
