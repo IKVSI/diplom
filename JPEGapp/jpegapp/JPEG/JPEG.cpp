@@ -753,6 +753,7 @@ vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<
         while(!mass[masssize - 1]) --masssize;
         signed long dc = mass[0] - this->components[this->ccid]->outDC;
         unsigned char category = JPEG::getCategory(dc);
+        //cout << "ID: " << (unsigned short) this->components[this->ccid]->id << " COMP[ID]: " <<  (unsigned short) comp[this->components[this->ccid]->id].DCnum << '\n';
         DC[comp[this->components[this->ccid]->id].DCnum]->encode(this->outbuffer, this->outbitlength, category);
         while (this->outbitlength >= 8)
         {
@@ -791,7 +792,7 @@ vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<
         if (masssize != (this->sampleprecision * this->sampleprecision))
         {
             category = 0;
-            AC[this->components[this->ccid]->DCnum]->encode(this->outbuffer, this->outbitlength, category);
+            AC[comp[this->components[this->ccid]->id].ACnum]->encode(this->outbuffer, this->outbitlength, category);
             while (this->outbitlength >= 8)
             {
                 data.push_back(this->byteFromOutBuffer());
@@ -836,6 +837,267 @@ unsigned char JPEG::byteFromOutBuffer()
     this->outbuffer &= a;
     //cout << "BIN: " << bin(this->outbuffer) << " LENGTH: " << this->outbitlength << "\n";
     return sym;
+}
+
+void JPEG::compressJPEG(string codingfile)
+{
+    this->decodeStart();
+    map<unsigned char, Huffman *> DC;
+    map<unsigned char, Huffman *> AC;
+    map<unsigned char, Component> comp;
+    this->genCoding(codingfile, DC, AC, comp);
+    vector<unsigned char> data = this->genJPEGData(DC, AC, comp);
+
+    string foutfilename = this->fin->getFileName();
+    foutfilename = foutfilename + ".compressed";
+    ofstream fout(foutfilename, ios::binary|ios::out);
+    unsigned long long SOS;
+    for(unsigned long long i = 0; i < this->markersaddr.size(); ++i)
+    {
+        switch (this->markerstype[i])
+        {
+            case 0xDA:
+                SOS = this->markersaddr[i];
+                break;
+            case 0xC4:
+            case 0xD9:
+            case 0xDD:
+                break;
+            case 0xD8:
+            case 0xDB:
+            case 0xC0:
+            default:
+                unsigned long long addrstart = this->markersaddr[i];
+                unsigned long long length = this->markersaddr[i + 1] - addrstart;
+                unsigned char * c = this->fin->readBytes(addrstart, length);
+                fout.write((char *) c, length);
+                delete [] c;
+                break;
+        }
+    }
+    char C[4];
+    this->cursor = SOS + 2;
+    unsigned long long length = this->readNumFromFile(2) + 2;
+    unsigned char * p = this->fin->readBytes(SOS, length);
+    fout.write((char *) p, length);
+    delete [] p;
+
+    p = new unsigned char[data.size()];
+    for(unsigned long long i = 0; i < data.size(); ++i) p[i] = data[i];
+    fout.write((char *) p, data.size());
+    delete [] p;
+    C[0] = 0xFF;
+    C[1] = 0xD9;
+    fout.write((char *) C, 2);
+
+    for(auto key: DC) delete key.second;
+    for(auto key: AC) delete key.second;
+    cout << "FILE COMPRESSED TO \"" << foutfilename <<"\"\n";
+}
+
+void JPEG::genCoding(string &codingfile, map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp)
+{
+    for(auto key: this->components)
+    {
+        Component temp;
+        temp.id = key->id;
+        comp.emplace(key->id, temp);
+    }
+    ifstream fin(codingfile, ios::in);
+    if (!(fin.is_open())) raise(5);
+    unsigned short bitlength;
+    fin >> bitlength;
+    string name;
+    string type;
+    while (fin >> name >> type)
+    {
+        cout << "NAME: " << name << ' ' << "TYPE: " << type << "\n\tCounts: ";
+        unsigned char * counts = new unsigned char[bitlength];
+        unsigned short sum = 0;
+        for(unsigned short i = 0; i < bitlength; ++i)
+        {
+            unsigned short count;
+            fin >> count;
+            counts[i] = count;
+            sum += count;
+            cout << count << ' ';
+        }
+        cout << "\n\tSymbols: ";
+        unsigned char * symbols = new unsigned char[sum];
+        for(unsigned short i = 0; i < sum; ++i)
+        {
+            unsigned short sym;
+            fin >> sym;
+            symbols[i] = sym;
+            cout << sym << ' ';
+        }
+        cout << '\n';
+        Huffman * h = new Huffman(bitlength);
+        h->createFromJPEG(counts, symbols);
+        for(auto key = comp.begin(); key != comp.end(); ++key)
+        {
+            if (JPEG::compnames[key->first] == name)
+            {
+                if (type == "DC")
+                {
+                    DC.emplace(key->first, h);
+                    key->second.DCnum = key->first;
+                }
+                else if (type == "AC")
+                {
+                    AC.emplace(key->first, h);
+                    key->second.ACnum = key->first;
+                }
+            }
+        }
+        delete [] counts;
+        delete [] symbols;
+    }
+    fin.close();
+}
+
+void JPEG::decompressJPEG(string codingfile)
+{
+    this->findMarkers();
+    map<unsigned char, Component> comp;
+    this->genCoding(codingfile, this->DC, this->AC, comp);
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        for (auto jey: comp)
+        {
+            if ((*key)->id == jey.second.id)
+            {
+                unsigned char c = (*key)->DCnum;
+                (*key)->DCnum = jey.second.DCnum;
+                jey.second.DCnum = c;
+                c = (*key)->ACnum;
+                (*key)->ACnum = jey.second.ACnum;
+                jey.second.ACnum = c;
+            }
+        }
+    }
+    this->genStats();
+    map<unsigned char, Huffman *> DC;
+    map<unsigned char, Huffman *> AC;
+    map<unsigned char, map<unsigned short, unsigned long long>> DCstat;
+    map<unsigned char, map<unsigned short, unsigned long long>> ACstat;
+    for(auto key = this->components.begin(); key != this->components.end(); ++key)
+    {
+        unsigned char dcnum = comp[(*key)->id].DCnum;
+        unsigned char acnum = comp[(*key)->id].ACnum;
+        map<unsigned char, unsigned long long> dcstat = this->stats[(*key)->id][false];
+        map<unsigned char, unsigned long long> acstat = this->stats[(*key)->id][true];
+        if (DCstat.find(dcnum) == DCstat.end()) DCstat.emplace(dcnum, map<unsigned short, unsigned long long>());
+        for(auto key: dcstat)
+        {
+            if (DCstat[dcnum].find(key.first) == DCstat[dcnum].end()) DCstat[dcnum].emplace(key.first, key.second);
+            else DCstat[dcnum][key.first] += key.second;
+        }
+        if (ACstat.find(acnum) == ACstat.end()) ACstat.emplace(acnum, map<unsigned short, unsigned long long>());
+        for(auto key: acstat)
+        {
+            if (ACstat[acnum].find(key.first) == ACstat[acnum].end()) ACstat[acnum].emplace(key.first, key.second);
+            else ACstat[acnum][key.first] += key.second;
+        }
+    }
+    for(auto key: DCstat)
+    {
+        DC.emplace(key.first, new Huffman(16));
+        DC[key.first]->createFromFrequencies(key.second);
+    }
+    for(auto key: ACstat)
+    {
+        AC.emplace(key.first, new Huffman(16));
+        AC[key.first]->createFromFrequencies(key.second);
+    }
+    vector<unsigned char> data = this->genJPEGData(DC, AC, comp);
+    string foutfilename = this->fin->getFileName();
+    foutfilename = foutfilename + ".jpg";
+    ofstream fout(foutfilename, ios::binary|ios::out);
+    for(auto key : this->markerstype)
+    {
+        if (key == 0xDA) continue;
+        if (key == 0xDD) continue;
+        if (key == 0xD9) continue;
+        vector<unsigned char> markerdata = this->getMarker(key);
+        unsigned char * p = new unsigned char[markerdata.size()];
+        for(unsigned long long i = 0; i < markerdata.size(); ++i) p[i] = markerdata[i];
+        fout.write((char *)p, markerdata.size());
+        delete [] p;
+    }
+    // marker 0xC4
+    vector<unsigned char> c4;
+    for(auto key: DC)
+    {
+        unsigned long long size;
+        c4.push_back(key.first);
+        unsigned char * p = key.second->huffmanSave(size);
+        for(unsigned long long i = 0; i < size; ++i) c4.push_back(p[i]);
+        delete [] p;
+    }
+    for(auto key: AC)
+    {
+        unsigned long long size;
+        c4.push_back((1 << 4) | key.first);
+        unsigned char * p = key.second->huffmanSave(size);
+        for(unsigned long long i = 0; i < size; ++i) c4.push_back(p[i]);
+        delete [] p;
+    }
+    unsigned long long length = c4.size()+2;
+    unsigned char C[4];
+    C[0] = 0xFF;
+    C[1] = 0xC4;
+    C[2] = length >> 8;
+    C[3] = length & 0x00FF;
+    fout.write((char *)C, 4);
+    unsigned char * p = new unsigned char[c4.size()];
+    for(unsigned long long i = 0; i < c4.size(); ++i) p[i] = c4[i];
+    fout.write((char *) p, c4.size());
+    delete [] p;
+
+    vector<unsigned char> markerdata = this->getMarker(0xDA);
+    p = new unsigned char[markerdata.size()];
+    for(unsigned long long i = 0; i < markerdata.size(); ++i) p[i] = markerdata[i];
+    fout.write((char *)p, markerdata.size());
+    delete [] p;
+
+    p = new unsigned char[data.size()];
+    for(unsigned long long i = 0; i < data.size(); ++i) p[i] = data[i];
+    fout.write((char *)p, data.size());
+    p[0] = 0xFF;
+    p[1] = 0xD9;
+    fout.write((char *)p, 2);
+    delete [] p;
+
+    for (auto key = DC.begin(); key != DC.end(); ++key) delete key->second;
+    for (auto key = AC.begin(); key != AC.end(); ++key) delete key->second;
+}
+
+vector<unsigned char> JPEG::getMarker(unsigned char marker)
+{
+    vector<unsigned char> r;
+    for(unsigned long long i = 0; i < this->markersaddr.size(); ++i)
+    {
+        if (this->markerstype[i] == marker)
+        {
+            unsigned long long s = this->markersaddr[i];
+            unsigned long long length;
+            if ((i + 1) < this->markersaddr.size()) length = this->markersaddr[i + 1] - s;
+            else this->fin->getFileSize() - s;
+            if (marker == 0xDA)
+            {
+                unsigned long long cursor = this->cursor;
+                this->cursor = this->markersaddr[i] + 2;
+                length = this->readNumFromFile(2) + 2;
+                this->cursor = cursor;
+            }
+            unsigned char * p = this->fin->readBytes(s, length);
+            for(unsigned long long j = 0; j < length; ++j) r.push_back(p[j]);
+            delete [] p;
+            return r;
+        }
+    }
+    return vector<unsigned char>();
 }
 
 

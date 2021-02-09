@@ -10,5 +10,6 @@ int main (int argc,  char ** args)
     else
     {
         JPEG photo(args[2]);
+        photo.compressJPEG(args[1]);
     }
 }

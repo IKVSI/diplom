@@ -27,7 +27,7 @@ public:
     void static encodeCategory(unsigned char category, unsigned long long int &buffer, unsigned short &bitlength, signed long &encodenum);
     Huffman(unsigned short bitlength);
     bool decode(unsigned long long &a, unsigned short &btlength, unsigned char &decodesym);
-    void encode(unsigned long long &a, unsigned short &btlength, unsigned char &decodesym);
+    void encode(unsigned long long &a, unsigned short &btlength, unsigned char &encodesym);
     map<unsigned char, unsigned char> codelength;
     string showTable();
     void createFromJPEG(unsigned char * counts, unsigned char * symbols);

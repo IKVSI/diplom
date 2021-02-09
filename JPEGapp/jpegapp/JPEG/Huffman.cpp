@@ -76,6 +76,8 @@ string Huffman::showTable()
 
 bool Huffman::decode(unsigned long long &a, unsigned short &bitlength, unsigned char &decodesym)
 {
+    //cout << "DEC\n";
+    //cout << "BIN: " << binn(a) << " LENGTH: " << bitlength << '\n';
     unsigned long long b = a;
     if (bitlength > this->bitlength) b >>= (bitlength - this->bitlength);
     else b <<= (this->bitlength - bitlength);
@@ -89,6 +91,7 @@ bool Huffman::decode(unsigned long long &a, unsigned short &bitlength, unsigned 
         b <<= bitlength;
         b -= 1;
         a &= b;
+        //cout << "OUTBIN: " << binn(a) << " LENGTH: " << bitlength << " SYM: " << (unsigned short )decodesym <<'\n';
         return true;
     }
     return false;
@@ -96,6 +99,8 @@ bool Huffman::decode(unsigned long long &a, unsigned short &bitlength, unsigned 
 
 bool Huffman::decodeCategory(unsigned char category, unsigned long long int &buffer, unsigned short &btlength, signed long &decodenum)
 {
+    //cout << "DECCAT\n";
+    //cout << "BIN: " << binn(buffer) << " LENGTH: " << btlength << '\n';
     if (category > btlength) return false;
     btlength -= category;
     unsigned long long temp = buffer >> btlength;
@@ -110,6 +115,7 @@ bool Huffman::decodeCategory(unsigned char category, unsigned long long int &buf
         }
     }
     else decodenum = 0;
+    //cout << "OUTBIN: " << binn(buffer) << " LENGTH: " << btlength << " NUM: " << decodenum << '\n';
     return true;
 }
 
@@ -305,12 +311,13 @@ unsigned char *Huffman::huffmanSave(unsigned long long & size)
     return r;
 }
 
- void Huffman::encode(unsigned long long int &a, unsigned short &btlength, unsigned char &decodesym)
+void Huffman::encode(unsigned long long int &a, unsigned short &btlength, unsigned char &encodesym)
 {
     //cout << "ENC\n";
     //cout << "BIN: " << binn(a) << " LENGTH: " << btlength << '\n';
-    unsigned long long b = this->codes[decodesym];
-    unsigned char bits = this->codelength[decodesym];
+    //cout << "SYM: " << (unsigned short) decodesym<< '\n' << flush;
+    unsigned long long b = this->codes[encodesym];
+    unsigned char bits = this->codelength[encodesym];
     a <<= bits;
     a |= b;
     btlength += bits;
