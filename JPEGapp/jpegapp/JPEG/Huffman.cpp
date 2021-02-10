@@ -315,7 +315,7 @@ void Huffman::encode(unsigned long long int &a, unsigned short &btlength, unsign
 {
     //cout << "ENC\n";
     //cout << "BIN: " << binn(a) << " LENGTH: " << btlength << '\n';
-    //cout << "SYM: " << (unsigned short) decodesym<< '\n' << flush;
+    //cout << "SYM: " << (unsigned short) encodesym<< '\n' << flush;
     unsigned long long b = this->codes[encodesym];
     unsigned char bits = this->codelength[encodesym];
     a <<= bits;

@@ -909,9 +909,10 @@ void JPEG::genCoding(string &codingfile, map<unsigned char, Huffman *> &DC, map<
     fin >> bitlength;
     string name;
     string type;
+    cout << "\n--- Load coding table! ---\n";
     while (fin >> name >> type)
     {
-        cout << "NAME: " << name << ' ' << "TYPE: " << type << "\n\tCounts: ";
+        cout << "\tNAME: " << name << ' ' << "TYPE: " << type << "\n\t\tCounts: ";
         unsigned char * counts = new unsigned char[bitlength];
         unsigned short sum = 0;
         for(unsigned short i = 0; i < bitlength; ++i)
@@ -922,7 +923,7 @@ void JPEG::genCoding(string &codingfile, map<unsigned char, Huffman *> &DC, map<
             sum += count;
             cout << count << ' ';
         }
-        cout << "\n\tSymbols: ";
+        cout << "\n\t\tSymbols: ";
         unsigned char * symbols = new unsigned char[sum];
         for(unsigned short i = 0; i < sum; ++i)
         {
@@ -963,16 +964,16 @@ void JPEG::decompressJPEG(string codingfile)
     this->genCoding(codingfile, this->DC, this->AC, comp);
     for(auto key = this->components.begin(); key != this->components.end(); ++key)
     {
-        for (auto jey: comp)
+        for (auto jey = comp.begin(); jey != comp.end(); ++jey)
         {
-            if ((*key)->id == jey.second.id)
+            if ((*key)->id == jey->second.id)
             {
                 unsigned char c = (*key)->DCnum;
-                (*key)->DCnum = jey.second.DCnum;
-                jey.second.DCnum = c;
+                (*key)->DCnum = jey->second.DCnum;
+                jey->second.DCnum = c;
                 c = (*key)->ACnum;
-                (*key)->ACnum = jey.second.ACnum;
-                jey.second.ACnum = c;
+                (*key)->ACnum = jey->second.ACnum;
+                jey->second.ACnum = c;
             }
         }
     }
@@ -1014,12 +1015,13 @@ void JPEG::decompressJPEG(string codingfile)
     string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename + ".jpg";
     ofstream fout(foutfilename, ios::binary|ios::out);
-    for(auto key : this->markerstype)
+    for(unsigned long long i = 0; i < this->markerstype.size(); ++i)
     {
+        unsigned char key = this->markerstype[i];
         if (key == 0xDA) continue;
         if (key == 0xDD) continue;
         if (key == 0xD9) continue;
-        vector<unsigned char> markerdata = this->getMarker(key);
+        vector<unsigned char> markerdata = this->getMarker(key, this->markersaddr[i]);
         unsigned char * p = new unsigned char[markerdata.size()];
         for(unsigned long long i = 0; i < markerdata.size(); ++i) p[i] = markerdata[i];
         fout.write((char *)p, markerdata.size());
@@ -1055,7 +1057,7 @@ void JPEG::decompressJPEG(string codingfile)
     fout.write((char *) p, c4.size());
     delete [] p;
 
-    vector<unsigned char> markerdata = this->getMarker(0xDA);
+    vector<unsigned char> markerdata = this->getMarker(0xDA, 0);
     p = new unsigned char[markerdata.size()];
     for(unsigned long long i = 0; i < markerdata.size(); ++i) p[i] = markerdata[i];
     fout.write((char *)p, markerdata.size());
@@ -1073,12 +1075,12 @@ void JPEG::decompressJPEG(string codingfile)
     for (auto key = AC.begin(); key != AC.end(); ++key) delete key->second;
 }
 
-vector<unsigned char> JPEG::getMarker(unsigned char marker)
+vector<unsigned char> JPEG::getMarker(unsigned char marker, unsigned long long addr)
 {
     vector<unsigned char> r;
     for(unsigned long long i = 0; i < this->markersaddr.size(); ++i)
     {
-        if (this->markerstype[i] == marker)
+        if ((this->markerstype[i] == marker) && (this->markersaddr[i] >= addr))
         {
             unsigned long long s = this->markersaddr[i];
             unsigned long long length;

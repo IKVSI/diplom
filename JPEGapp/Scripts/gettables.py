@@ -44,22 +44,23 @@ def coding(dct, bitlength):
         m = M[-1]
         if m:
             S.append(L[d][-1])
+            L[d].pop()
             M[-1] = False
         else:
             while (len(L[d]) > 1):
-                a = L[d].pop(-1)
-                b = L[d].pop(-1)
+                a = L[d].pop()
+                b = L[d].pop()
                 t = (K[a][0] + K[b][0], K[a][1].copy())
                 t[1].extend(K[b][1])
                 for i in range(len(L[d + 1])):
-                    if K[L[d + 1][i]][0] < t[0]:
+                    if K[ L[d + 1][i] ][0] < t[0]:
                         break
-                    elif (K[L[d + 1][i]][0] == t[0]) and (len(K[L[d + 1][i]][1]) < len(t[1])):
+                    elif (K[ L[d + 1][i] ][0] == t[0]) and (len(K[ L[d + 1][i] ][1]) < len(t[1])):
                         break
                 L[d + 1].insert(i, len(K))
                 K.append(t)
-            D.pop(-1)
-            M.pop(-1)
+            D.pop()
+            M.pop()
     P = {}
     for i in dct:
         P[i[1]] = 0

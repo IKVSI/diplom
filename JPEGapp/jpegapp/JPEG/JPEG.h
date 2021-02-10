@@ -107,7 +107,7 @@ private:
     // Собрать статистику по файлу
     map<unsigned char, map <bool, map<unsigned char, unsigned long long>>> stats;
     void genStats();
-    vector <unsigned char> getMarker(unsigned char marker);
+    vector <unsigned char> getMarker(unsigned char marker, unsigned long long addr);
     vector <unsigned char> genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp);
 
     void genCoding(string &codingfile, map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp);
