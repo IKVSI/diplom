@@ -5,11 +5,20 @@ int main (int argc,  char ** args)
     if (argc < 2)
     {
         cerr << "Use: jpegtables.exe [jpeg file]\n";
-        raise(3);
+        throw 3;
     }
     else
     {
-        JPEG photo(args[1]);
-        photo.decodeTables();
+        try
+        {
+            JPEG photo(args[1]);
+            photo.decodeTables();
+        }
+        catch (int a)
+        {
+            cout << flush;
+            cerr << "Error: " << a << '\n';
+            throw a;
+        }
     }
 }

@@ -24,7 +24,7 @@ struct Component
 class JPEG
 {
     const string compnames[6] = {"", "Y", "Cb", "Cr", "I", "Q"};
-    const unsigned char neMARKER[9] = {0x0, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7};
+    const unsigned char neMARKER[10] = {0x0, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7};
     const unsigned char ZIGZAG[8][8] = {
         0,  1,  5,  6, 14, 15, 27, 28,
         2,  4,  7, 13, 16, 26, 29, 42,

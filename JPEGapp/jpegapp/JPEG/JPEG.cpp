@@ -21,7 +21,7 @@ unsigned long long JPEG::readNumFromFile(unsigned char length)
     {
         if (l) delete [] bts;
         cerr << "Broken file: Failed read " << (unsigned short) length << "b" << '\n' << flush;
-        raise(4);
+        throw 4;
     }
     l = 0;
     for(unsigned char i = 0; i < length; ++i)
@@ -57,7 +57,8 @@ void JPEG::findMarkers()
         if (marker == 0xFF)
         {
             marker = this->readNumFromFile(1);
-            if (!binary_search(this->neMARKER, this->neMARKER + 9, marker))
+            if (marker == 0xFF) this->cursor--;
+            else if (!binary_search(this->neMARKER, this->neMARKER + 9, marker))
             {
                 this->markerstype.push_back(marker);
                 this->markersaddr.push_back(this->cursor - 2);
@@ -904,7 +905,7 @@ void JPEG::genCoding(string &codingfile, map<unsigned char, Huffman *> &DC, map<
         comp.emplace(key->id, temp);
     }
     ifstream fin(codingfile, ios::in);
-    if (!(fin.is_open())) raise(5);
+    if (!(fin.is_open())) throw 6;
     unsigned short bitlength;
     fin >> bitlength;
     string name;

@@ -56,7 +56,7 @@ def coding(dct, bitlength):
                 for i in range(len(L[d + 1])):
                     if K[ L[d + 1][i] ][0] < t[0]:
                         break
-                    elif (K[ L[d + 1][i] ][0] == t[0]) and (len(K[ L[d + 1][i] ][1]) < len(t[1])):
+                    elif (K[ L[d + 1][i] ][0] == t[0]) and (len(K[ L[d + 1][i] ][1]) <= len(t[1])):
                         break
                 L[d + 1].insert(i, len(K))
                 K.append(t)
@@ -73,10 +73,10 @@ def coding(dct, bitlength):
     counts = [0 for i in range(bitlength)]
     symbols = []
     for i in range(bitlength):
-        for j in P:
-            if P[j] == i + 1:
+        for j in sorted(P.items(), key=lambda item: (item[1], item[0])):
+            if j[1] == i + 1:
                 counts[i] += 1
-                symbols.append(j)
+                symbols.append(j[0])
     return counts, symbols
 
 def compressFile(file, codingfile, compressfolder):
@@ -104,14 +104,21 @@ def getStats(file):
         return stats
 
 
-def main():
-    folder = os.path.abspath(sys.argv[1])
-    sys.argv[2] = int(sys.argv[2])
+def main(merge = False):
+    try:
+        folder = os.path.abspath(sys.argv[1])
+        sys.argv[2] = int(sys.argv[2])
+    except ValueError:
+        pass
     if (not os.path.isdir(folder)) or (sys.argv[2] not in [16, 24]):
         print("Usage: python3 compress.py [folder] 16/24")
         sys.exit(1)
     jpegfolder = "{}/{}".format(folder, "JPEG")
     compressfolder = "{}/{}".format(folder, "COMPRESS")
+    if os.path.exists(jpegfolder):
+        shutil.rmtree(jpegfolder)
+    if os.path.exists(compressfolder):
+        shutil.rmtree(compressfolder)
     os.mkdir(jpegfolder)
     os.mkdir(compressfolder)
     filecounter = 0
@@ -138,11 +145,51 @@ def main():
     jflist = os.listdir(jpegfolder)
     print("Number of files: ", len(jflist))
     codingtable = {}
+    with open("{}/{}".format(compressfolder, "coding.stats"), "w") as fout:
+        for i in allstats:
+            print(i, file=fout)
+            print(allstats[i], file=fout)
+    if merge:
+        for i in allstats:
+            if "Cb" in i:
+                if "DC" in i:
+                    cbdc = allstats[i]
+                else:
+                    cbac = allstats[i]
+            if "Cr" in i:
+                if "DC" in i:
+                    crdc = allstats[i]
+                else:
+                    crac = allstats[i]
+        dc = {}
+        for i in crdc:
+            if i not in dc:
+                dc[i] = 0
+            dc[i] += crdc[i]
+        for i in cbdc:
+            if i not in dc:
+                dc[i] = 0
+            dc[i] += cbdc[i]
+        ac = {}
+        for i in crac:
+            if i not in ac:
+                ac[i] = 0
+            ac[i] += crac[i]
+        for i in cbac:
+            if i not in ac:
+                ac[i] = 0
+            ac[i] += cbac[i]
+        for i in allstats:
+            if ("Cb" in i) or ("Cr" in i):
+                if "DC" in i:
+                    allstats[i] = dc
+                else:
+                    allstats[i] = ac
     for i in allstats:
         dct = [(i[1], i[0]) for i in sorted(allstats[i].items(), key=lambda item: item[1])]
         dct.reverse()
         codingtable[i] = coding(dct, sys.argv[2])
-    codingfile = "{}/{}".format(folder, "coding.table")
+    codingfile = "{}/{}".format(compressfolder, "coding.table")
     with open(codingfile, "w") as fout:
         print(sys.argv[2], file=fout)
         for i in codingtable:
