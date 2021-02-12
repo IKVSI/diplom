@@ -107,11 +107,12 @@ def getStats(file):
 def main(merge = False):
     try:
         folder = os.path.abspath(sys.argv[1])
-        sys.argv[2] = int(sys.argv[2])
+        #sys.argv[2] = int(sys.argv[2])
+        bitlength = 16
     except ValueError:
         pass
-    if (not os.path.isdir(folder)) or (sys.argv[2] not in [16, 24]):
-        print("Usage: python3 compress.py [folder] 16/24")
+    if (not os.path.isdir(folder)):
+        print("Usage: python3 compress.py [folder]")
         sys.exit(1)
     jpegfolder = "{}/{}".format(folder, "JPEG")
     compressfolder = "{}/{}".format(folder, "COMPRESS")
@@ -145,10 +146,12 @@ def main(merge = False):
     jflist = os.listdir(jpegfolder)
     print("Number of files: ", len(jflist))
     codingtable = {}
+    '''
     with open("{}/{}".format(compressfolder, "coding.stats"), "w") as fout:
         for i in allstats:
             print(i, file=fout)
             print(allstats[i], file=fout)
+    '''
     if merge:
         for i in allstats:
             if "Cb" in i:
@@ -188,10 +191,10 @@ def main(merge = False):
     for i in allstats:
         dct = [(i[1], i[0]) for i in sorted(allstats[i].items(), key=lambda item: item[1])]
         dct.reverse()
-        codingtable[i] = coding(dct, sys.argv[2])
+        codingtable[i] = coding(dct, bitlength)
     codingfile = "{}/{}".format(compressfolder, "coding.table")
     with open(codingfile, "w") as fout:
-        print(sys.argv[2], file=fout)
+        print(bitlength, file=fout)
         for i in codingtable:
             print(i, file=fout)
             print(' '.join(map(str, codingtable[i][0])), file=fout)
