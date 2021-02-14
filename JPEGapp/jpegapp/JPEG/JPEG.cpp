@@ -1,8 +1,9 @@
 #include "JPEG.h"
 
-JPEG::JPEG(string filename)
+JPEG::JPEG(string filename, bool compressed)
 {
     this->fin = new ReadFile(filename);
+    this->compressed = compressed;
     fill(JPEG::MARKERS, JPEG::MARKERS+256, &JPEG::defaultMarker);
     JPEG::MARKERS[0xd8] = &JPEG::markerSOI;
     JPEG::MARKERS[0xd9] = &JPEG::markerEOI;
@@ -53,6 +54,7 @@ void JPEG::findMarkers()
     this->cursor = 0;
     while (this->cursor < this->fin->getFileSize())
     {
+        if (this->datacursor) break;
         unsigned char marker = this->readNumFromFile(1);
         if (marker == 0xFF)
         {
@@ -65,6 +67,17 @@ void JPEG::findMarkers()
                 jpegfunc func = JPEG::MARKERS[marker];
                 (this->*func)();
             }
+        }
+    }
+    this->cursor = this->fin->getFileSize() - 2;
+    if (this->readNumFromFile(1) == 0xFF)
+    {
+        if (this->readNumFromFile(1) == 0xD9)
+        {
+            this->markerstype.push_back(0xD9);
+            this->markerstype.push_back(this->cursor - 2);
+            jpegfunc func = JPEG::MARKERS[0xD9];
+            (this->*func)();
         }
     }
 }
@@ -552,7 +565,7 @@ void JPEG::extendBuffer()
     if ((64 - this->bitlength) > this->sampleprecision)
     {
         unsigned char c = this->readNumFromFile(1);
-        if (c == 0xFF) this->readNumFromFile(1);
+        if ((!this->compressed) && (c == 0xFF)) this->readNumFromFile(1);
         this->buffer = (this->buffer << this->sampleprecision) | c;
         this->bitlength += this->sampleprecision;
     }
@@ -735,7 +748,7 @@ unsigned char JPEG::getCategory(signed long a)
     else return 0;
 }
 
-vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp)
+vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp, bool compressed)
 {
     this->decodeStart();
     vector <unsigned char> data;
@@ -759,13 +772,13 @@ vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<
         while (this->outbitlength >= 8)
         {
             data.push_back(this->byteFromOutBuffer());
-            if (data.back() == 0xFF) data.push_back(0);
+            if ((!compressed) && (data.back() == 0xFF)) data.push_back(0);
         }
         Huffman::encodeCategory(category, this->outbuffer, this->outbitlength, dc);
         while (this->outbitlength >= 8)
         {
             data.push_back(this->byteFromOutBuffer());
-            if (data.back() == 0xFF) data.push_back(0);
+            if ((!compressed) && (data.back() == 0xFF)) data.push_back(0);
         }
         unsigned char nulls = 0;
         for(unsigned long i = 1; i < masssize; ++i)
@@ -778,13 +791,13 @@ vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<
                 while (this->outbitlength >= 8)
                 {
                     data.push_back(this->byteFromOutBuffer());
-                    if (data.back() == 0xFF) data.push_back(0);
+                    if ((!compressed) && (data.back() == 0xFF)) data.push_back(0);
                 }
                 Huffman::encodeCategory(category, this->outbuffer, this->outbitlength, mass[i]);
                 while (this->outbitlength >= 8)
                 {
                     data.push_back(this->byteFromOutBuffer());
-                    if (data.back() == 0xFF) data.push_back(0);
+                    if ((!compressed) && (data.back() == 0xFF)) data.push_back(0);
                 }
                 nulls = 0;
             }
@@ -797,7 +810,7 @@ vector <unsigned char> JPEG::genJPEGData(map<unsigned char, Huffman *> &DC, map<
             while (this->outbitlength >= 8)
             {
                 data.push_back(this->byteFromOutBuffer());
-                if (data.back() == 0xFF) data.push_back(0);
+                if ((!compressed) && (data.back() == 0xFF)) data.push_back(0);
             }
         }
         this->components[this->ccid]->outDC = mass[0];
@@ -847,7 +860,7 @@ void JPEG::compressJPEG(string codingfile)
     map<unsigned char, Huffman *> AC;
     map<unsigned char, Component> comp;
     this->genCoding(codingfile, DC, AC, comp);
-    vector<unsigned char> data = this->genJPEGData(DC, AC, comp);
+    vector<unsigned char> data = this->genJPEGData(DC, AC, comp, true);
 
     string foutfilename = this->fin->getFileName();
     foutfilename = foutfilename + ".compressed";

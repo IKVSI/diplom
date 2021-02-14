@@ -108,12 +108,12 @@ def main(merge = False):
     try:
         folder = os.path.abspath(sys.argv[1])
         #sys.argv[2] = int(sys.argv[2])
-        bitlength = 16
     except ValueError:
         pass
-    if (not os.path.isdir(folder)):
+    if (not os.path.isdir(folder)): # or sys.argv[2] not in list(range(16, 25))):
         print("Usage: python3 compress.py [folder]")
         sys.exit(1)
+    bitlength = 24
     jpegfolder = "{}/{}".format(folder, "JPEG")
     compressfolder = "{}/{}".format(folder, "COMPRESS")
     if os.path.exists(jpegfolder):

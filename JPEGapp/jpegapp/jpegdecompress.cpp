@@ -11,7 +11,7 @@ int main (int argc,  char ** args)
     {
         try
         {
-            JPEG photo(args[2]);
+            JPEG photo(args[2], true);
             photo.decompressJPEG(args[1]);
         }
         catch (int a)

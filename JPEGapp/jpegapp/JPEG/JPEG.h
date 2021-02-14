@@ -77,7 +77,7 @@ private:
     void markerSOS();
     void markerDQT();
     // Курсок на начало данных
-    unsigned long long datacursor;
+    unsigned long long datacursor = 0;
     // Достаёт следующую матрицу
     signed long ** getNextTable();
     // Количество прочтённых MCU
@@ -107,12 +107,15 @@ private:
     // Собрать статистику по файлу
     map<unsigned char, map <bool, map<unsigned char, unsigned long long>>> stats;
     void genStats();
+    // Получить байты маркера после аддреса
     vector <unsigned char> getMarker(unsigned char marker, unsigned long long addr);
-    vector <unsigned char> genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp);
-
+    // Сгенерировать информацию в формате JPEG
+    vector <unsigned char> genJPEGData(map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp, bool compressed = false);
+    // Считывание и генерация кода Хаффмана для перекодировки
     void genCoding(string &codingfile, map<unsigned char, Huffman *> &DC, map<unsigned char, Huffman *> &AC, map<unsigned char, Component> &comp);
+    bool compressed = false;
 public:
-    JPEG(string filename);
+    JPEG(string filename, bool compressed = false);
     ~JPEG();
     void saveClearJpeg();
     void compressJPEG(string codingfile);
